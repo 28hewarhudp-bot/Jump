@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>8-Bit Maze Quest</title>
+<style>
+body {
+    margin:0;
+    background:black;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    overflow:hidden;
+}
+canvas {
+    image-rendering: pixelated;
+    border:4px solid white;
+}
+</style>
+</head>
+<body>
+<canvas id="game" width="960" height="640"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const TILE = 32;
+const ROWS = 20;
+const COLS = 30;
+
+const maze = [];
+for(let y=0;y<ROWS;y++){
+    maze[y]=[];
+    for(let x=0;x<COLS;x++){
+        if(y===0||x===0||y===ROWS-1||x===COLS-1||Math.random()<0.25){
+            maze[y][x]=1;
+        }else{
+            maze[y][x]=0;
+        }
+    }
+}
+
+maze[1][1]=0;
+
+const player = {
+    x:1,
+    y:1,
+    color:"cyan"
+};
+
+const monster = {
+    x:COLS-2,
+    y:ROWS-2,
+    color:"red"
+};
+
+const keys = [];
+for(let i=0;i<8;i++){
+    let x,y;
+    do{
+        x=Math.floor(Math.random()*COLS);
+        y=Math.floor(Math.random()*ROWS);
+    }while(maze[y][x]!==0);
+
+    keys.push({x,y});
+}
+
+let collected = 0;
+let gameOver = false;
+let win = false;
+
+const input = {};
+window.addEventListener("keydown", e=> input[e.key.toLowerCase()] = true);
+window.addEventListener("keyup", e=> input[e.key.toLowerCase()] = false);
+
+function moveCharacter(char, dx, dy){
+    const nx = char.x + dx;
+    const ny = char.y + dy;
+
+    if(nx>=0 && ny>=0 && nx<COLS && ny<ROWS && maze[ny][nx]===0){
+        char.x = nx;
+        char.y = ny;
+    }
+}
+
+function update(){
+    if(gameOver || win) return;
+
+    if(input["arrowup"] || input["w"]){
+        moveCharacter(player,0,-1);
+    }
+    if(input["arrowdown"] || input["s"]){
+        moveCharacter(player,0,1);
+    }
+    if(input["arrowleft"] || input["a"]){
+        moveCharacter(player,-1,0);
+    }
+    if(input["arrowright"] || input["d"]){
+        moveCharacter(player,1,0);
+    }
+
+    if(Math.random()<0.4){
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        dirs.sort(()=>Math.random()-0.5);
+
+        for(const dir of dirs){
+            const nx = monster.x+dir[0];
+            const ny = monster.y+dir[1];
+
+            if(maze[ny][nx]===0){
+                monster.x = nx;
+                monster.y = ny;
+                break;
+            }
+        }
+    }
+
+    for(let i=keys.length-1;i>=0;i--){
+        if(keys[i].x===player.x && keys[i].y===player.y){
+            keys.splice(i,1);
+            collected++;
+        }
+    }
+
+    if(player.x===monster.x && player.y===monster.y){
+        gameOver = true;
+    }
+
+    if(keys.length===0){
+        win = true;
+    }
+}
+
+function draw(){
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    for(let y=0;y<ROWS;y++){
+        for(let x=0;x<COLS;x++){
+            if(maze[y][x]===1){
+                ctx.fillStyle = "blue";
+                ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+            }
+        }
+    }
+
+    keys.forEach(k=>{
+        ctx.fillStyle = "yellow";
+        ctx.fillRect(k.x*TILE+8,k.y*TILE+8,16,16);
+    });
+
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x*TILE+4,player.y*TILE+4,24,24);
+
+    ctx.fillStyle = monster.color;
+    ctx.fillRect(monster.x*TILE+4,monster.y*TILE+4,24,24);
+
+    ctx.fillStyle = "white";
+    ctx.font = "20px monospace";
+    ctx.fillText("Keys: " + collected, 10, 25);
+
+    if(gameOver){
+        ctx.font = "50px monospace";
+        ctx.fillText("GAME OVER", 320, 320);
+    }
+
+    if(win){
+        ctx.font
