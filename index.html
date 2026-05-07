@@ -27,216 +27,118 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
 const TILE = 32;
-const ROWS = 20;
-const COLS = 30;
+const ROWS = 21;
+const COLS = 31;
 
-const maze = [];
-for(let y=0;y<ROWS;y++){
-    maze[y]=[];
-    for(let x=0;x<COLS;x++){
-        if(y===0||x===0||y===ROWS-1||x===COLS-1||Math.random()<0.25){
-            maze[y][x]=1;
-        }else{
-            maze[y][x]=0;
+// ===== MAZE GENERATION (DFS) =====
+const maze = Array.from({length:ROWS},()=>Array(COLS).fill(1));
+
+function carve(x,y){
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    dirs.sort(()=>Math.random()-0.5);
+
+    for(const d of dirs){
+        const nx=x+d[0]*2;
+        const ny=y+d[1]*2;
+
+        if(nx>0 && ny>0 && nx<COLS-1 && ny<ROWS-1 && maze[ny][nx]===1){
+            maze[ny-d[1]][nx-d[0]]=0;
+            maze[ny][nx]=0;
+            carve(nx,ny);
         }
     }
 }
 
 maze[1][1]=0;
+carve(1,1);
 
-const player = {
-    x:1,
-    y:1,
-    color:"cyan"
-};
+// ===== PLAYER =====
+const player={x:1,y:1};
 
-const monster = {
-    x:COLS-2,
-    y:ROWS-2,
-    color:"red"
-};
-
-const keys = [];
+// ===== KEYS =====
+const keys=[];
 for(let i=0;i<8;i++){
     let x,y;
     do{
         x=Math.floor(Math.random()*COLS);
         y=Math.floor(Math.random()*ROWS);
     }while(maze[y][x]!==0);
-
     keys.push({x,y});
 }
 
-let collected = 0;
-let gameOver = false;
-let win = false;
+let collected=0;
 
-const input = {};
-window.addEventListener("keydown", e=> input[e.key.toLowerCase()] = true);
-window.addEventListener("keyup", e=> input[e.key.toLowerCase()] = false);
-
-function moveCharacter(char, dx, dy){
-    const nx = char.x + dx;
-    const ny = char.y + dy;
-
-    if(nx>=0 && ny>=0 && nx<COLS && ny<ROWS && maze[ny][nx]===0){
-        char.x = nx;
-        char.y = ny;
-    }
+// ===== MONSTERS (CREEPERS) =====
+const monsters=[];
+for(let i=0;i<4;i++){
+    monsters.push({
+        x:COLS-2-i,
+        y:ROWS-2,
+        mode:"chase",
+        color:"green"
+    });
 }
 
-function update(){
-    if(gameOver || win) return;
+let boss={x:Math.floor(COLS/2),y:Math.floor(ROWS/2)};
 
-    if(input["arrowup"] || input["w"]){
-        moveCharacter(player,0,-1);
+// ===== INPUT =====
+const input={};
+window.addEventListener("keydown",e=>input[e.key.toLowerCase()]=true);
+window.addEventListener("keyup",e=>input[e.key.toLowerCase()]=false);
+
+function move(x,y,dx,dy){
+    const nx=x+dx, ny=y+dy;
+    if(maze[ny] && maze[ny][nx]===0){
+        return {x:nx,y:ny};
     }
-    if(input["arrowdown"] || input["s"]){
-        moveCharacter(player,0,1);
-    }
-    if(input["arrowleft"] || input["a"]){
-        moveCharacter(player,-1,0);
-    }
-    if(input["arrowright"] || input["d"]){
-        moveCharacter(player,1,0);
-    }
-
-    const dirs = [
-        [1,0],[-1,0],[0,1],[0,-1]
-    ];
-
-    let bestMove = null;
-    let bestDistance = Infinity;
-
-    for(const dir of dirs){
-        const nx = monster.x + dir[0];
-        const ny = monster.y + dir[1];
-
-        if(nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
-        if(maze[ny][nx] !== 0) continue;
-
-        const distance = Math.abs(player.x - nx) + Math.abs(player.y - ny);
-
-        if(distance < bestDistance){
-            bestDistance = distance;
-            bestMove = dir;
-        }
-    }
-
-    if(bestMove){
-        monster.x += bestMove[0];
-        monster.y += bestMove[1];
-    }
-
-    for(let i=keys.length-1;i>=0;i--){
-        if(keys[i].x===player.x && keys[i].y===player.y){
-            keys.splice(i,1);
-            collected++;
-        }
-    }
-
-    if(player.x===monster.x && player.y===monster.y){
-        gameOver = true;
-    }
-
-    if(keys.length===0){
-        win = true;
-    }
+    return {x,y};
 }
 
-function draw(){
-    ctx.fillStyle = "black";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+// ===== DISTANCE MAP (BFS) =====
+let dist=[];
+function buildDistances(){
+    dist=Array.from({length:ROWS},()=>Array(COLS).fill(Infinity));
+    const q=[[player.x,player.y]];
+    dist[player.y][player.x]=0;
 
-    for(let y=0;y<ROWS;y++){
-        for(let x=0;x<COLS;x++){
-            if(maze[y][x]===1){
-                ctx.fillStyle = "blue";
-                ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+    while(q.length){
+        const [x,y]=q.shift();
+        const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+
+        for(const d of dirs){
+            const nx=x+d[0], ny=y+d[1];
+            if(maze[ny] && maze[ny][nx]===0 && dist[ny][nx]===Infinity){
+                dist[ny][nx]=dist[y][x]+1;
+                q.push([nx,ny]);
             }
         }
     }
-
-    keys.forEach(k=>{
-        ctx.fillStyle = "yellow";
-        ctx.fillRect(k.x*TILE+8,k.y*TILE+8,16,16);
-    });
-
-    ctx.fillStyle = player.color;
-    ctx.fillRect(player.x*TILE+4,player.y*TILE+4,24,24);
-
-    ctx.fillStyle = monster.color;
-    ctx.fillRect(monster.x*TILE+4,monster.y*TILE+4,24,24);
-
-    ctx.fillStyle = "white";
-    ctx.font = "20px monospace";
-    ctx.fillText("Keys: " + collected, 10, 25);
-
-    if(gameOver){
-        ctx.font = "50px monospace";
-        ctx.fillText("GAME OVER", 320, 320);
-    }
-
-    if(win){
-        ctx.font = "50px monospace";
-        ctx.fillText("YOU WIN!", 340, 320);
-    }
 }
 
-function loop(){
-    update();
-    draw();
-    setTimeout(()=>requestAnimationFrame(loop),120);
-}
+// ===== MONSTER AI (PAC-MAN STYLE) =====
+function moveMonster(m,i){
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
 
-loop();
-
-
-// ===== UPGRADED SYSTEMS =====
-const doors = [];
-for(let i=0;i<4;i++){
-    let x,y;
-    do{
-        x=Math.floor(Math.random()*COLS);
-        y=Math.floor(Math.random()*ROWS);
-    }while(maze[y][x]!==0 || (x===1&&y===1));
-    maze[y][x]=2;
-    doors.push({x,y,open:false});
-}
-
-const monsters = [monster];
-for(let i=0;i<2;i++){
-    monsters.push({
-        x:COLS-3-i,
-        y:ROWS-3,
-        color:"orange"
-    });
-}
-
-let boss = {
-    x:Math.floor(COLS/2),
-    y:Math.floor(ROWS/2),
-    color:"purple"
-};
-
-function canWalk(x,y){
-    if(x<0||y<0||x>=COLS||y>=ROWS) return false;
-    return maze[y][x]===0;
-}
-
-function moveHunter(m){
-    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
     let best=null;
-    let bestDist=Infinity;
+    let bestScore=Infinity;
+
+    const scatterTargets=[
+        {x:1,y:1},
+        {x:COLS-2,y:1},
+        {x:1,y:ROWS-2},
+        {x:COLS-2,y:ROWS-2}
+    ];
+
+    const target = (m.mode==="scatter") ? scatterTargets[i] : player;
 
     for(const d of dirs){
-        const nx=m.x+d[0];
-        const ny=m.y+d[1];
-        if(!canWalk(nx,ny)) continue;
+        const nx=m.x+d[0], ny=m.y+d[1];
+        if(!maze[ny] || maze[ny][nx]!==0) continue;
 
-        const dist=Math.abs(player.x-nx)+Math.abs(player.y-ny);
-        if(dist<bestDist){
-            bestDist=dist;
+        const score = Math.abs(target.x-nx)+Math.abs(target.y-ny);
+
+        if(dist[ny] && dist[ny][nx]<bestScore){
+            bestScore=dist[ny][nx];
             best=d;
         }
     }
@@ -245,149 +147,119 @@ function moveHunter(m){
         m.x+=best[0];
         m.y+=best[1];
     }
+
+    if(Math.random()<0.005){
+        m.mode = (m.mode==="chase") ? "scatter" : "chase";
+    }
 }
 
-const oldUpdate = update;
-update = function(){
-    oldUpdate();
+let gameOver=false, win=false;
 
-    if(collected>=4){
-        doors.forEach(d=>{
-            d.open=true;
-            maze[d.y][d.x]=0;
-        });
+function update(){
+    if(gameOver||win) return;
+
+    if(input["w"]||input["arrowup"]) player.y--;
+    if(input["s"]||input["arrowdown"]) player.y++;
+    if(input["a"]||input["arrowleft"]) player.x--;
+    if(input["d"]||input["arrowright"]) player.x++;
+
+    if(maze[player.y][player.x]===1){
+        player.x=1;player.y=1;
     }
 
-    monsters.forEach(m=>moveHunter(m));
-    moveHunter(boss);
-
-    monsters.forEach(m=>{
-        if(m.x===player.x&&m.y===player.y){
-            gameOver=true;
+    keys.forEach((k,i)=>{
+        if(k.x===player.x && k.y===player.y){
+            keys.splice(i,1);
+            collected++;
         }
     });
 
-    if(boss.x===player.x&&boss.y===player.y){
-        gameOver=true;
-    }
-};
+    buildDistances();
 
-const oldDraw = draw;
-draw = function(){
-    ctx.fillStyle = "black";
+    monsters.forEach((m,i)=>moveMonster(m,i));
+
+    monsters.forEach(m=>{
+        if(m.x===player.x && m.y===player.y) gameOver=true;
+    });
+
+    if(keys.length===0) win=true;
+}
+
+function draw(){
+    ctx.fillStyle="black";
     ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    // draw maze
+    // maze
     for(let y=0;y<ROWS;y++){
         for(let x=0;x<COLS;x++){
             if(maze[y][x]===1){
-                ctx.fillStyle = "#1e3cff";
+                ctx.fillStyle="#1a2cff";
                 ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
             }
         }
     }
 
-    // draw keys (key shape)
+    // keys
     keys.forEach(k=>{
-        ctx.strokeStyle = "gold";
-        ctx.lineWidth = 3;
-
-        ctx.beginPath();
-        ctx.arc(k.x*TILE+10,k.y*TILE+12,6,0,Math.PI*2);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(k.x*TILE+16,k.y*TILE+12);
-        ctx.lineTo(k.x*TILE+28,k.y*TILE+12);
-        ctx.lineTo(k.x*TILE+28,k.y*TILE+18);
-        ctx.lineTo(k.x*TILE+24,k.y*TILE+18);
-        ctx.lineTo(k.x*TILE+24,k.y*TILE+14);
-        ctx.stroke();
+        ctx.fillStyle="gold";
+        ctx.fillRect(k.x*TILE+12,k.y*TILE+10,8,12);
+        ctx.fillRect(k.x*TILE+16,k.y*TILE+6,4,4);
     });
-
-    // fog of war
-    for(let y=0;y<ROWS;y++){
-        for(let x=0;x<COLS;x++){
-            const d=Math.abs(player.x-x)+Math.abs(player.y-y);
-            if(d>5){
-                ctx.fillStyle="rgba(0,0,0,0.85)";
-                ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
-            }
-        }
-    }
 
     // player (boy square with legs)
-    ctx.fillStyle = "cyan";
-    ctx.fillRect(player.x*TILE+6,player.y*TILE+6,20,20);
+    ctx.fillStyle="cyan";
+    ctx.fillRect(player.x*TILE+8,player.y*TILE+8,16,16);
 
-    // legs
-    ctx.strokeStyle = "cyan";
     ctx.beginPath();
-    ctx.moveTo(player.x*TILE+10,player.y*TILE+26);
-    ctx.lineTo(player.x*TILE+10,player.y*TILE+32);
-    ctx.moveTo(player.x*TILE+22,player.y*TILE+26);
-    ctx.lineTo(player.x*TILE+22,player.y*TILE+32);
+    ctx.strokeStyle="cyan";
+    ctx.moveTo(player.x*TILE+10,player.y*TILE+24);
+    ctx.lineTo(player.x*TILE+10,player.y*TILE+30);
+    ctx.moveTo(player.x*TILE+22,player.y*TILE+24);
+    ctx.lineTo(player.x*TILE+22,player.y*TILE+30);
     ctx.stroke();
 
-    // monsters (ghosts)
+    // creeper monsters
     monsters.forEach(m=>{
-        ctx.fillStyle="white";
+        ctx.fillStyle="lime";
+        ctx.fillRect(m.x*TILE+6,m.y*TILE+6,20,20);
 
-        ctx.beginPath();
-        ctx.arc(m.x*TILE+16,m.y*TILE+14,12,Math.PI,0);
-        ctx.lineTo(m.x*TILE+28,m.y*TILE+28);
-        ctx.lineTo(m.x*TILE+4,m.y*TILE+28);
-        ctx.closePath();
-        ctx.fill();
-
-        // eyes
         ctx.fillStyle="black";
-        ctx.beginPath();
-        ctx.arc(m.x*TILE+12,m.y*TILE+14,2,0,Math.PI*2);
-        ctx.arc(m.x*TILE+20,m.y*TILE+14,2,0,Math.PI*2);
-        ctx.fill();
-
-        // creepy smile
-        ctx.beginPath();
-        ctx.arc(m.x*TILE+16,m.y*TILE+18,5,0,Math.PI);
-        ctx.stroke();
+        ctx.fillRect(m.x*TILE+10,m.y*TILE+10,4,4);
+        ctx.fillRect(m.x*TILE+18,m.y*TILE+10,4,4);
+        ctx.fillRect(m.x*TILE+12,m.y*TILE+18,8,4);
     });
 
-    // boss ghost (bigger)
-    ctx.fillStyle="purple";
-    ctx.beginPath();
-    ctx.arc(boss.x*TILE+16,boss.y*TILE+16,16,Math.PI,0);
-    ctx.lineTo(boss.x*TILE+32,boss.y*TILE+32);
-    ctx.lineTo(boss.x*TILE,boss.y*TILE+32);
-    ctx.closePath();
-    ctx.fill();
+    // boss creeper
+    ctx.fillStyle="darkgreen";
+    ctx.fillRect(boss.x*TILE,boss.y*TILE,32,32);
 
     ctx.fillStyle="black";
-    ctx.beginPath();
-    ctx.arc(boss.x*TILE+12,boss.y*TILE+14,3,0,Math.PI*2);
-    ctx.arc(boss.x*TILE+20,boss.y*TILE+14,3,0,Math.PI*2);
-    ctx.fill();
-
-    ctx.strokeStyle="black";
-    ctx.beginPath();
-    ctx.arc(boss.x*TILE+16,boss.y*TILE+20,6,0,Math.PI);
-    ctx.stroke();
+    ctx.fillRect(boss.x*TILE+8,boss.y*TILE+10,6,6);
+    ctx.fillRect(boss.x*TILE+18,boss.y*TILE+10,6,6);
+    ctx.fillRect(boss.x*TILE+12,boss.y*TILE+22,10,4);
 
     // UI
     ctx.fillStyle="white";
-    ctx.font="20px monospace";
-    ctx.fillText("Keys: "+collected,10,25);
+    ctx.font="18px monospace";
+    ctx.fillText("Keys: "+collected,10,20);
 
     if(gameOver){
         ctx.font="50px monospace";
-        ctx.fillText("GAME OVER",280,320);
+        ctx.fillText("GAME OVER",260,320);
     }
-
     if(win){
         ctx.font="50px monospace";
-        ctx.fillText("YOU WIN!",300,320);
+        ctx.fillText("YOU WIN",280,320);
     }
-};
+}
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+loop();
+
 </script>
 </body>
 </html>
