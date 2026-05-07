@@ -274,33 +274,119 @@ update = function(){
 
 const oldDraw = draw;
 draw = function(){
-    oldDraw();
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    // draw extra monsters
-    monsters.forEach(m=>{
-        ctx.fillStyle = m.color;
-        ctx.fillRect(m.x*TILE+4,m.y*TILE+4,24,24);
-    });
-
-    // draw boss
-    ctx.fillStyle = boss.color;
-    ctx.fillRect(boss.x*TILE+4,boss.y*TILE+4,24,24);
-
-    // fog of war (only far tiles are darkened)
+    // draw maze
     for(let y=0;y<ROWS;y++){
         for(let x=0;x<COLS;x++){
-            const distance = Math.abs(player.x-x)+Math.abs(player.y-y);
-
-            if(distance > 5){
-                ctx.fillStyle = "rgba(0,0,0,0.9)";
+            if(maze[y][x]===1){
+                ctx.fillStyle = "#1e3cff";
                 ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
             }
         }
     }
 
-    // redraw player on top of fog
-    ctx.fillStyle = player.color;
-    ctx.fillRect(player.x*TILE+4,player.y*TILE+4,24,24);
+    // draw keys (key shape)
+    keys.forEach(k=>{
+        ctx.strokeStyle = "gold";
+        ctx.lineWidth = 3;
+
+        ctx.beginPath();
+        ctx.arc(k.x*TILE+10,k.y*TILE+12,6,0,Math.PI*2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(k.x*TILE+16,k.y*TILE+12);
+        ctx.lineTo(k.x*TILE+28,k.y*TILE+12);
+        ctx.lineTo(k.x*TILE+28,k.y*TILE+18);
+        ctx.lineTo(k.x*TILE+24,k.y*TILE+18);
+        ctx.lineTo(k.x*TILE+24,k.y*TILE+14);
+        ctx.stroke();
+    });
+
+    // fog of war
+    for(let y=0;y<ROWS;y++){
+        for(let x=0;x<COLS;x++){
+            const d=Math.abs(player.x-x)+Math.abs(player.y-y);
+            if(d>5){
+                ctx.fillStyle="rgba(0,0,0,0.85)";
+                ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+            }
+        }
+    }
+
+    // player (boy square with legs)
+    ctx.fillStyle = "cyan";
+    ctx.fillRect(player.x*TILE+6,player.y*TILE+6,20,20);
+
+    // legs
+    ctx.strokeStyle = "cyan";
+    ctx.beginPath();
+    ctx.moveTo(player.x*TILE+10,player.y*TILE+26);
+    ctx.lineTo(player.x*TILE+10,player.y*TILE+32);
+    ctx.moveTo(player.x*TILE+22,player.y*TILE+26);
+    ctx.lineTo(player.x*TILE+22,player.y*TILE+32);
+    ctx.stroke();
+
+    // monsters (ghosts)
+    monsters.forEach(m=>{
+        ctx.fillStyle="white";
+
+        ctx.beginPath();
+        ctx.arc(m.x*TILE+16,m.y*TILE+14,12,Math.PI,0);
+        ctx.lineTo(m.x*TILE+28,m.y*TILE+28);
+        ctx.lineTo(m.x*TILE+4,m.y*TILE+28);
+        ctx.closePath();
+        ctx.fill();
+
+        // eyes
+        ctx.fillStyle="black";
+        ctx.beginPath();
+        ctx.arc(m.x*TILE+12,m.y*TILE+14,2,0,Math.PI*2);
+        ctx.arc(m.x*TILE+20,m.y*TILE+14,2,0,Math.PI*2);
+        ctx.fill();
+
+        // creepy smile
+        ctx.beginPath();
+        ctx.arc(m.x*TILE+16,m.y*TILE+18,5,0,Math.PI);
+        ctx.stroke();
+    });
+
+    // boss ghost (bigger)
+    ctx.fillStyle="purple";
+    ctx.beginPath();
+    ctx.arc(boss.x*TILE+16,boss.y*TILE+16,16,Math.PI,0);
+    ctx.lineTo(boss.x*TILE+32,boss.y*TILE+32);
+    ctx.lineTo(boss.x*TILE,boss.y*TILE+32);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle="black";
+    ctx.beginPath();
+    ctx.arc(boss.x*TILE+12,boss.y*TILE+14,3,0,Math.PI*2);
+    ctx.arc(boss.x*TILE+20,boss.y*TILE+14,3,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle="black";
+    ctx.beginPath();
+    ctx.arc(boss.x*TILE+16,boss.y*TILE+20,6,0,Math.PI);
+    ctx.stroke();
+
+    // UI
+    ctx.fillStyle="white";
+    ctx.font="20px monospace";
+    ctx.fillText("Keys: "+collected,10,25);
+
+    if(gameOver){
+        ctx.font="50px monospace";
+        ctx.fillText("GAME OVER",280,320);
+    }
+
+    if(win){
+        ctx.font="50px monospace";
+        ctx.fillText("YOU WIN!",300,320);
+    }
 };
 </script>
 </body>
