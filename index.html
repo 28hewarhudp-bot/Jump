@@ -101,20 +101,31 @@ function update(){
         moveCharacter(player,1,0);
     }
 
-    if(Math.random()<0.4){
-        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-        dirs.sort(()=>Math.random()-0.5);
+    const dirs = [
+        [1,0],[-1,0],[0,1],[0,-1]
+    ];
 
-        for(const dir of dirs){
-            const nx = monster.x+dir[0];
-            const ny = monster.y+dir[1];
+    let bestMove = null;
+    let bestDistance = Infinity;
 
-            if(maze[ny][nx]===0){
-                monster.x = nx;
-                monster.y = ny;
-                break;
-            }
+    for(const dir of dirs){
+        const nx = monster.x + dir[0];
+        const ny = monster.y + dir[1];
+
+        if(nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+        if(maze[ny][nx] !== 0) continue;
+
+        const distance = Math.abs(player.x - nx) + Math.abs(player.y - ny);
+
+        if(distance < bestDistance){
+            bestDistance = distance;
+            bestMove = dir;
         }
+    }
+
+    if(bestMove){
+        monster.x += bestMove[0];
+        monster.y += bestMove[1];
     }
 
     for(let i=keys.length-1;i>=0;i--){
@@ -167,4 +178,123 @@ function draw(){
     }
 
     if(win){
-        ctx.font
+        ctx.font = "50px monospace";
+        ctx.fillText("YOU WIN!", 340, 320);
+    }
+}
+
+function loop(){
+    update();
+    draw();
+    setTimeout(()=>requestAnimationFrame(loop),120);
+}
+
+loop();
+
+
+// ===== UPGRADED SYSTEMS =====
+const doors = [];
+for(let i=0;i<4;i++){
+    let x,y;
+    do{
+        x=Math.floor(Math.random()*COLS);
+        y=Math.floor(Math.random()*ROWS);
+    }while(maze[y][x]!==0 || (x===1&&y===1));
+    maze[y][x]=2;
+    doors.push({x,y,open:false});
+}
+
+const monsters = [monster];
+for(let i=0;i<2;i++){
+    monsters.push({
+        x:COLS-3-i,
+        y:ROWS-3,
+        color:"orange"
+    });
+}
+
+let boss = {
+    x:Math.floor(COLS/2),
+    y:Math.floor(ROWS/2),
+    color:"purple"
+};
+
+function canWalk(x,y){
+    if(x<0||y<0||x>=COLS||y>=ROWS) return false;
+    return maze[y][x]===0;
+}
+
+function moveHunter(m){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    let best=null;
+    let bestDist=Infinity;
+
+    for(const d of dirs){
+        const nx=m.x+d[0];
+        const ny=m.y+d[1];
+        if(!canWalk(nx,ny)) continue;
+
+        const dist=Math.abs(player.x-nx)+Math.abs(player.y-ny);
+        if(dist<bestDist){
+            bestDist=dist;
+            best=d;
+        }
+    }
+
+    if(best){
+        m.x+=best[0];
+        m.y+=best[1];
+    }
+}
+
+const oldUpdate = update;
+update = function(){
+    oldUpdate();
+
+    if(collected>=4){
+        doors.forEach(d=>{
+            d.open=true;
+            maze[d.y][d.x]=0;
+        });
+    }
+
+    monsters.forEach(m=>moveHunter(m));
+    moveHunter(boss);
+
+    monsters.forEach(m=>{
+        if(m.x===player.x&&m.y===player.y){
+            gameOver=true;
+        }
+    });
+
+    if(boss.x===player.x&&boss.y===player.y){
+        gameOver=true;
+    }
+};
+
+const oldDraw = draw;
+draw = function(){
+    oldDraw();
+
+    ctx.fillStyle="rgba(0,0,0,.85)";
+    for(let y=0;y<ROWS;y++){
+        for(let x=0;x<COLS;x++){
+            const d=Math.abs(player.x-x)+Math.abs(player.y-y);
+            if(d>5){
+                ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+            }
+        }
+    }
+
+    monsters.forEach(m=>{
+        ctx.fillStyle=m.color;
+        ctx.fillRect(m.x*TILE+4,m.y*TILE+4,24,24);
+    });
+
+    ctx.fillStyle=boss.color;
+    ctx.fillRect(boss.x*TILE,boss.y*TILE,32,32);
+};
+</script>
+</body>
+</html>
+
