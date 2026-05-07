@@ -276,25 +276,32 @@ const oldDraw = draw;
 draw = function(){
     oldDraw();
 
-    ctx.fillStyle="rgba(0,0,0,.85)";
+    // draw extra monsters
+    monsters.forEach(m=>{
+        ctx.fillStyle = m.color;
+        ctx.fillRect(m.x*TILE+4,m.y*TILE+4,24,24);
+    });
+
+    // draw boss
+    ctx.fillStyle = boss.color;
+    ctx.fillRect(boss.x*TILE+4,boss.y*TILE+4,24,24);
+
+    // fog of war (only far tiles are darkened)
     for(let y=0;y<ROWS;y++){
         for(let x=0;x<COLS;x++){
-            const d=Math.abs(player.x-x)+Math.abs(player.y-y);
-            if(d>5){
+            const distance = Math.abs(player.x-x)+Math.abs(player.y-y);
+
+            if(distance > 5){
+                ctx.fillStyle = "rgba(0,0,0,0.9)";
                 ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
             }
         }
     }
 
-    monsters.forEach(m=>{
-        ctx.fillStyle=m.color;
-        ctx.fillRect(m.x*TILE+4,m.y*TILE+4,24,24);
-    });
-
-    ctx.fillStyle=boss.color;
-    ctx.fillRect(boss.x*TILE,boss.y*TILE,32,32);
+    // redraw player on top of fog
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x*TILE+4,player.y*TILE+4,24,24);
 };
 </script>
 </body>
 </html>
-
