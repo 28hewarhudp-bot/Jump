@@ -46,11 +46,11 @@
         // Player Ghost (Blinky)
         let playerGhost = { x: 9 * tileSize, y: 11 * tileSize, dir: "UP", nextDir: "UP", color: "red" };
 
-        // AI Ghosts
+        // AI Ghosts with respawn timers (0 means active)
         let aiGhosts = [
-            { x: 8 * tileSize, y: 9 * tileSize, dir: "UP", color: "pink" },
-            { x: 9 * tileSize, y: 9 * tileSize, dir: "UP", color: "cyan" },
-            { x: 10 * tileSize, y: 9 * tileSize, dir: "UP", color: "orange" }
+            { x: 8 * tileSize, y: 9 * tileSize, dir: "UP", color: "pink", respawnTimer: 0 },
+            { x: 9 * tileSize, y: 9 * tileSize, dir: "UP", color: "cyan", respawnTimer: 0 },
+            { x: 10 * tileSize, y: 9 * tileSize, dir: "UP", color: "orange", respawnTimer: 0 }
         ];
 
         // Pac-man Object
@@ -96,11 +96,11 @@
             for (let r = 0; r < mapGrid.length; r++) {
                 for (let c = 0; c < mapGrid[r].length; c++) {
                     if (mapGrid[r][c] === 0 || mapGrid[r][c] === 3) {
-                        return true; // There are still items to eat
+                        return true;
                     }
                 }
             }
-            return false; // Grid completely cleared
+            return false;
         }
 
         function movePlayerGhost(ghostStep) {
@@ -130,6 +130,18 @@
 
         function updateAIGhosts(ghostStep) {
             for (let g of aiGhosts) {
+                // If ghost is in jail, tick down the timer
+                if (g.respawnTimer > 0) {
+                    g.respawnTimer--;
+                    if (g.respawnTimer === 0) {
+                        // Return to the maze entry point above the house box
+                        g.x = 9 * tileSize;
+                        g.y = 5 * tileSize;
+                        g.dir = "UP";
+                    }
+                    continue; // Skip movement processing while dead
+                }
+
                 if (g.x % tileSize === 0 && g.y % tileSize === 0) {
                     let valid = getValidDirections(g, ghostStep);
                     let opposites = { "UP": "DOWN", "DOWN": "UP", "LEFT": "RIGHT", "RIGHT": "LEFT" };
@@ -157,14 +169,17 @@
                 let filtered = valid.filter(d => d !== opposites[pacman.dir]);
                 if (filtered.length > 0) valid = filtered;
 
+                // Find the closest active (non-respawning) ghost target
                 let targetGhost = playerGhost;
                 let minDist = Math.hypot(pacman.x - playerGhost.x, pacman.y - playerGhost.y);
+                
                 for (let g of aiGhosts) {
+                    if (g.respawnTimer > 0) continue; // Ignore dead targets
                     let d = Math.hypot(pacman.x - g.x, pacman.y - g.y);
                     if (d < minDist) { minDist = d; targetGhost = g; }
                 }
 
-                let bestDir = valid[0];
+                let bestDir = valid;
                 if (powerPelletTimer > 0) {
                     let bestScore = Infinity;
                     for (let d of valid) {
@@ -204,7 +219,7 @@
                 mapGrid[r][c] = 2; 
             } else if (mapGrid[r] && mapGrid[r][c] === 3) {
                 mapGrid[r][c] = 2; 
-                powerPelletTimer = 600; // 600 frames at 60fps = Exactly 10 seconds
+                powerPelletTimer = 600; // Exactly 10 seconds
             }
 
             if (powerPelletTimer > 0) powerPelletTimer--;
@@ -269,15 +284,12 @@
                 }
             }
 
-            // Check if Pac-Man won by eating everything
             if (!checkPelletsRemaining()) {
                 alert("Pac-Man ate all the pellets! Pac-Man wins!");
                 location.reload();
                 return;
             }
 
-            // Speeds adapt strictly to Power Pellet State
-            // Normal: Both run at step 2. Hunt mode: Pac-man runs at step 2, Ghosts run at step 1 (slower).
             let currentGhostStep = (powerPelletTimer > 0) ? 1 : 2;
             let currentPacmanStep = 2; 
 
@@ -288,7 +300,9 @@
 
             // Render Actors
             drawGhost(playerGhost);
-            aiGhosts.forEach(drawGhost);
+            aiGhosts.forEach(g => {
+                if (g.respawnTimer === 0) drawGhost(g);
+            });
 
             // Render Pac-man
             ctx.fillStyle = "yellow";
@@ -312,11 +326,10 @@
 
             // Precise Bounding Box Intersections
             let pBox = { x1: pacman.x, y1: pacman.y, x2: pacman.x + tileSize, y2: pacman.y + tileSize };
+            
+            // Check Player Ghost
             let gBox = { x1: playerGhost.x, y1: playerGhost.y, x2: playerGhost.x + tileSize, y2: playerGhost.y + tileSize };
-
-            let collision = (pBox.x1 < gBox.x2 && pBox.x2 > gBox.x1 && pBox.y1 < gBox.y2 && pBox.y2 > gBox.y1);
-
-            if (collision) {
+            if (pBox.x1 < gBox.x2 && pBox.x2 > gBox.x1 && pBox.y1 < gBox.y2 && pBox.y2 > gBox.y1) {
                 if (powerPelletTimer > 0) {
                     alert("Pac-Man ate you! Pac-Man wins!");
                 } else {
@@ -326,15 +339,21 @@
                 return;
             }
 
+            // Check AI Teammates
             for (let g of aiGhosts) {
+                if (g.respawnTimer > 0) continue; // Skip collisions if already dead
+                
                 if (pBox.x1 < g.x + tileSize && pBox.x2 > g.x && pBox.y1 < g.y + tileSize && pBox.y2 > g.y) {
                     if (powerPelletTimer > 0) {
-                        alert("Pac-Man ate your teammate! Pac-Man wins!");
+                        // Send AI teammate back to the ghost house box coordinates
+                        g.x = 9 * tileSize;
+                        g.y = 9 * tileSize;
+                        g.respawnTimer = 240; // ~4 seconds at 60fps
                     } else {
                         alert("Your teammate caught Pac-Man! Ghosts Win!");
+                        location.reload();
+                        return;
                     }
-                    location.reload();
-                    return;
                 }
             }
 
