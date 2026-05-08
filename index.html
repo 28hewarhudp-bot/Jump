@@ -10,18 +10,18 @@
 </head>
 <body>
     <h1>Reverse Pac-Man</h1>
-    <div class="controls">USE ARROW KEYS TO MOVE THE RED GHOST. CATCH PAC-MAN!</div>
-    <canvas id="gameCanvas" width="380" height="400"></canvas>
+    <div class="controls">USE ARROW KEYS TO MOVE THE RED GHOST (BLINKY). CATCH PAC-MAN BEFORE HE EATS YOU!</div>
+    <canvas id="gameCanvas" width="380" height="380"></canvas>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const tileSize = 20;
 
-        // 1 = Wall, 0 = Pellet, 2 = Empty
+        // 1 = Wall, 0 = Pellet, 3 = Power Pellet, 2 = Empty
         let mapGrid = [
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,3,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,3,1],
             [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
             [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
@@ -35,117 +35,296 @@
             [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,0,1],
+            [1,3,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,3,1],
             [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
             [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
         ];
 
-        let ghost = { x: 9, y: 11, dir: "UP", nextDir: "UP" };
-        let pacman = { x: 9, y: 15, dir: "LEFT", nextDir: "LEFT", speed: 0.1 };
+        // Frame configuration for perfect, grid-aligned movements
+        const step = 2; // Pixel speed per frame (tileSize 20 must be divisible by this)
+        let powerPelletTimer = 0;
+
+        // Player Ghost (Blinky)
+        let playerGhost = { x: 9 * tileSize, y: 11 * tileSize, dir: "UP", nextDir: "UP", color: "red" };
+
+        // AI Ghosts
+        let aiGhosts = [
+            { x: 8 * tileSize, y: 9 * tileSize, dir: "UP", color: "pink" },
+            { x: 9 * tileSize, y: 9 * tileSize, dir: "UP", color: "cyan" },
+            { x: 10 * tileSize, y: 9 * tileSize, dir: "UP", color: "orange" }
+        ];
+
+        // Pac-man Object
+        let pacman = { x: 9 * tileSize, y: 15 * tileSize, dir: "LEFT", nextDir: "LEFT", mouthAngle: 0.2 };
 
         window.addEventListener("keydown", (e) => {
-            if (e.key === "ArrowUp") ghost.nextDir = "UP";
-            if (e.key === "ArrowDown") ghost.nextDir = "DOWN";
-            if (e.key === "ArrowLeft") ghost.nextDir = "LEFT";
-            if (e.key === "ArrowRight") ghost.nextDir = "RIGHT";
+            if (e.key === "ArrowUp") playerGhost.nextDir = "UP";
+            if (e.key === "ArrowDown") playerGhost.nextDir = "DOWN";
+            if (e.key === "ArrowLeft") playerGhost.nextDir = "LEFT";
+            if (e.key === "ArrowRight") playerGhost.nextDir = "RIGHT";
         });
 
-        function isWall(x, y) {
-            let row = Math.floor(y);
-            let col = Math.floor(x);
-            return mapGrid[row] && mapGrid[row][col] === 1;
+        function isWallAt(px, py) {
+            // Check all 4 boundary corners of the bounding box
+            let corners = [
+                {x: px, y: py},
+                {x: px + tileSize - 1, y: py},
+                {x: px, y: py + tileSize - 1},
+                {x: px + tileSize - 1, y: py + tileSize - 1}
+            ];
+            for (let c of corners) {
+                let col = Math.floor(c.x / tileSize);
+                let row = Math.floor(c.y / tileSize);
+                if (!mapGrid[row] || mapGrid[row][col] === 1) return true;
+            }
+            return false;
         }
 
-        function updateAI() {
-            // Calculate distance to ghost
-            let dist = Math.sqrt(Math.pow(pacman.x - ghost.x, 2) + Math.pow(pacman.y - ghost.y, 2));
-            
-            // PAC-MAN AI: RUN AWAY if you are close (within 4 tiles)
-            if (dist < 4) {
-                if (ghost.x > pacman.x) pacman.nextDir = "LEFT";
-                else pacman.nextDir = "RIGHT";
-                if (ghost.y > pacman.y) pacman.nextDir = "UP";
-                else pacman.nextDir = "DOWN";
-            } else {
-                // SEEK PELLETS: Simple logic to wander toward pellets
-                if (Math.random() < 0.05) {
-                    let dirs = ["UP", "DOWN", "LEFT", "RIGHT"];
-                    pacman.nextDir = dirs[Math.floor(Math.random() * 4)];
+        function getValidDirections(entity) {
+            let valid = [];
+            let dirs = ["UP", "DOWN", "LEFT", "RIGHT"];
+            for (let d of dirs) {
+                let nx = entity.x, ny = entity.y;
+                if (d === "UP") ny -= step;
+                if (d === "DOWN") ny += step;
+                if (d === "LEFT") nx -= step;
+                if (d === "RIGHT") nx += step;
+                if (!isWallAt(nx, ny)) valid.push(d);
+            }
+            return valid;
+        }
+
+        function movePlayerGhost() {
+            // Only allow changing directions when perfectly snapped to the grid tile
+            if (playerGhost.x % tileSize === 0 && playerGhost.y % tileSize === 0) {
+                let testX = playerGhost.x, testY = playerGhost.y;
+                if (playerGhost.nextDir === "UP") testY -= step;
+                if (playerGhost.nextDir === "DOWN") testY += step;
+                if (playerGhost.nextDir === "LEFT") testX -= step;
+                if (playerGhost.nextDir === "RIGHT") testX += step;
+
+                if (!isWallAt(testX, testY)) {
+                    playerGhost.dir = playerGhost.nextDir;
                 }
             }
 
-            moveEntity(pacman, 0.08);
-            
-            // Eat Pellets
-            let r = Math.round(pacman.y);
-            let c = Math.round(pacman.x);
-            if (mapGrid[r] && mapGrid[r][c] === 0) mapGrid[r][c] = 2;
+            let nx = playerGhost.x, ny = playerGhost.y;
+            if (playerGhost.dir === "UP") ny -= step;
+            if (playerGhost.dir === "DOWN") ny += step;
+            if (playerGhost.dir === "LEFT") nx -= step;
+            if (playerGhost.dir === "RIGHT") nx += step;
+
+            if (!isWallAt(nx, ny)) {
+                playerGhost.x = nx;
+                playerGhost.y = ny;
+            }
         }
 
-        function moveEntity(ent, spd) {
-            let nx = ent.x, ny = ent.y;
-            if (ent.nextDir === "UP") ny -= spd;
-            if (ent.nextDir === "DOWN") ny += spd;
-            if (ent.nextDir === "LEFT") nx -= spd;
-            if (ent.nextDir === "RIGHT") nx += spd;
+        function updateAIGhosts() {
+            for (let g of aiGhosts) {
+                if (g.x % tileSize === 0 && g.y % tileSize === 0) {
+                    let valid = getValidDirections(g);
+                    // Prevent immediate 180 turn unless stuck
+                    let opposites = { "UP": "DOWN", "DOWN": "UP", "LEFT": "RIGHT", "RIGHT": "LEFT" };
+                    let filtered = valid.filter(d => d !== opposites[g.dir]);
+                    if (filtered.length > 0) valid = filtered;
 
-            if (!isWall(nx, ny) && !isWall(nx + 0.9, ny + 0.9)) {
-                ent.x = nx; ent.y = ny; ent.dir = ent.nextDir;
-            } else {
-                // Try current direction
-                nx = ent.x; ny = ent.y;
-                if (ent.dir === "UP") ny -= spd;
-                if (ent.dir === "DOWN") ny += spd;
-                if (ent.dir === "LEFT") nx -= spd;
-                if (ent.dir === "RIGHT") nx += spd;
-                if (!isWall(nx, ny) && !isWall(nx + 0.9, ny + 0.9)) {
-                    ent.x = nx; ent.y = ny;
+                    g.dir = valid[Math.floor(Math.random() * valid.length)];
                 }
+
+                let nx = g.x, ny = g.y;
+                if (g.dir === "UP") ny -= step;
+                if (g.dir === "DOWN") ny += step;
+                if (g.dir === "LEFT") nx -= step;
+                if (g.dir === "RIGHT") nx += step;
+                if (!isWallAt(nx, ny)) { g.x = nx; g.y = ny; }
             }
+        }
+
+        function updatePacmanAI() {
+            if (pacman.x % tileSize === 0 && pacman.y % tileSize === 0) {
+                let valid = getValidDirections(pacman);
+                if (valid.length === 0) return;
+
+                let opposites = { "UP": "DOWN", "DOWN": "UP", "LEFT": "RIGHT", "RIGHT": "LEFT" };
+                let filtered = valid.filter(d => d !== opposites[pacman.dir]);
+                if (filtered.length > 0) valid = filtered;
+
+                // Find the closest active ghost target
+                let targetGhost = playerGhost;
+                let minDist = Math.hypot(pacman.x - playerGhost.x, pacman.y - playerGhost.y);
+                for (let g of aiGhosts) {
+                    let d = Math.hypot(pacman.x - g.x, pacman.y - g.y);
+                    if (d < minDist) { minDist = d; targetGhost = g; }
+                }
+
+                let bestDir = valid[0];
+                if (powerPelletTimer > 0) {
+                    // HUNT MODE: Select direction that reduces distance to target ghost
+                    let bestScore = Infinity;
+                    for (let d of valid) {
+                        let nx = pacman.x, ny = pacman.y;
+                        if (d === "UP") ny -= tileSize;
+                        if (d === "DOWN") ny += tileSize;
+                        if (d === "LEFT") nx -= tileSize;
+                        if (d === "RIGHT") nx += tileSize;
+                        let score = Math.hypot(nx - targetGhost.x, ny - targetGhost.y);
+                        if (score < bestScore) { bestScore = score; bestDir = d; }
+                    }
+                } else {
+                    // EVADE MODE: Select direction that maximizes distance away from target ghost
+                    let bestScore = -Infinity;
+                    for (let d of valid) {
+                        let nx = pacman.x, ny = pacman.y;
+                        if (d === "UP") ny -= tileSize;
+                        if (d === "DOWN") ny += tileSize;
+                        if (d === "LEFT") nx -= tileSize;
+                        if (d === "RIGHT") nx += tileSize;
+                        let score = Math.hypot(nx - targetGhost.x, ny - targetGhost.y);
+                        if (score > bestScore) { bestScore = score; bestDir = d; }
+                    }
+                }
+                pacman.dir = bestDir;
+            }
+
+            let nx = pacman.x, ny = pacman.y;
+            if (pacman.dir === "UP") ny -= step;
+            if (pacman.dir === "DOWN") ny += step;
+            if (pacman.dir === "LEFT") nx -= step;
+            if (pacman.dir === "RIGHT") nx += step;
+            if (!isWallAt(nx, ny)) { pacman.x = nx; pacman.y = ny; }
+
+            // Consume Items
+            let r = Math.floor((pacman.y + 10) / tileSize);
+            let c = Math.floor((pacman.x + 10) / tileSize);
+            if (mapGrid[r] && mapGrid[r][c] === 0) {
+                mapGrid[r][c] = 2; // Pellet consumed
+            } else if (mapGrid[r] && mapGrid[r][c] === 3) {
+                mapGrid[r][c] = 2; // Power Pellet consumed
+                powerPelletTimer = 300; // Active for ~5 seconds
+            }
+
+            if (powerPelletTimer > 0) powerPelletTimer--;
+        }
+
+        function drawGhostEyes(gx, gy, dir) {
+            let eyeOffset = { x: 0, y: 0 };
+            if (dir === "UP") eyeOffset.y = -2;
+            if (dir === "DOWN") eyeOffset.y = 2;
+            if (dir === "LEFT") eyeOffset.x = -2;
+            if (dir === "RIGHT") eyeOffset.x = 2;
+
+            // Left Eye
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.arc(gx + 6, gy + 8, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "blue";
+            ctx.beginPath(); ctx.arc(gx + 6 + eyeOffset.x, gy + 8 + eyeOffset.y, 1.5, 0, Math.PI * 2); ctx.fill();
+
+            // Right Eye
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.arc(gx + 14, gy + 8, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "blue";
+            ctx.beginPath(); ctx.arc(gx + 14 + eyeOffset.x, gy + 8 + eyeOffset.y, 1.5, 0, Math.PI * 2); ctx.fill();
+        }
+
+        function drawGhost(g) {
+            let cx = g.x;
+            let cy = g.y;
+
+            // Flash dark blue if Pac-man is hunting
+            ctx.fillStyle = (powerPelletTimer > 0) ? (powerPelletTimer % 20 < 10 ? "#191970" : "#4169E1") : g.color;
+
+            ctx.beginPath();
+            ctx.arc(cx + 10, cy + 10, 9, Math.PI, 0);
+            ctx.lineTo(cx + 19, cy + 19);
+            // Wave/Skirt baseline spikes
+            ctx.lineTo(cx + 15, cy + 16);
+            ctx.lineTo(cx + 10, cy + 19);
+            ctx.lineTo(cx + 5, cy + 16);
+            ctx.lineTo(cx + 1, cy + 19);
+            ctx.closePath();
+            ctx.fill();
+
+            drawGhostEyes(cx, cy, g.dir);
         }
 
         function draw() {
             ctx.fillStyle = "black";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Map
+            // Draw Map Terrain
             for (let r = 0; r < mapGrid.length; r++) {
                 for (let c = 0; c < mapGrid[r].length; c++) {
                     if (mapGrid[r][c] === 1) {
                         ctx.fillStyle = "blue";
                         ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
                     } else if (mapGrid[r][c] === 0) {
-                        ctx.fillStyle = "white";
-                        ctx.beginPath();
-                        ctx.arc(c * tileSize + 10, r * tileSize + 10, 2, 0, Math.PI * 2);
-                        ctx.fill();
+                        ctx.fillStyle = "orange";
+                        ctx.beginPath(); ctx.arc(c * tileSize + 10, r * tileSize + 10, 2.5, 0, Math.PI * 2); ctx.fill();
+                    } else if (mapGrid[r][c] === 3) {
+                        // Flash power pellets
+                        if (Date.now() % 400 < 200) {
+                            ctx.fillStyle = "yellow";
+                            ctx.beginPath(); ctx.arc(c * tileSize + 10, r * tileSize + 10, 6, 0, Math.PI * 2); ctx.fill();
+                        }
                     }
                 }
             }
 
-            // Draw Ghost (Player)
-            ctx.fillStyle = "red";
-            ctx.beginPath();
-            ctx.arc(ghost.x * tileSize + 10, ghost.y * tileSize + 10, 8, Math.PI, 0);
-            ctx.lineTo(ghost.x * tileSize + 18, ghost.y * tileSize + 18);
-            ctx.lineTo(ghost.x * tileSize + 2, ghost.y * tileSize + 18);
-            ctx.fill();
+            // Calculations
+            movePlayerGhost();
+            updateAIGhosts();
+            updatePacmanAI();
 
-            // Draw Pacman (AI)
+            // Render Actors
+            drawGhost(playerGhost);
+            aiGhosts.forEach(drawGhost);
+
+            // Render Pac-man
             ctx.fillStyle = "yellow";
             ctx.beginPath();
-            ctx.arc(pacman.x * tileSize + 10, pacman.y * tileSize + 10, 8, 0.2 * Math.PI, 1.8 * Math.PI);
-            ctx.lineTo(pacman.x * tileSize + 10, pacman.y * tileSize + 10);
+            let baseRotation = 0;
+            if (pacman.dir === "DOWN") baseRotation = 0.5 * Math.PI;
+            if (pacman.dir === "LEFT") baseRotation = 1.0 * Math.PI;
+            if (pacman.dir === "RIGHT") baseRotation = 0.0;
+            if (pacman.dir === "UP") baseRotation = 1.5 * Math.PI;
+
+            // Mouth animation cycle
+            pacman.mouthAngle = 0.25 * Math.abs(Math.sin(Date.now() / 100));
+
+            ctx.arc(
+                pacman.x + 10, pacman.y + 10, 9, 
+                baseRotation + pacman.mouthAngle, 
+                baseRotation + (2 * Math.PI) - pacman.mouthAngle
+            );
+            ctx.lineTo(pacman.x + 10, pacman.y + 10);
+            ctx.closePath();
             ctx.fill();
 
-            moveEntity(ghost, 0.12);
-            updateAI();
+            // Precise Bounding Box Intersections
+            let pBox = { x1: pacman.x, y1: pacman.y, x2: pacman.x + tileSize, y2: pacman.y + tileSize };
+            let gBox = { x1: playerGhost.x, y1: playerGhost.y, x2: playerGhost.x + tileSize, y2: playerGhost.y + tileSize };
 
-            // Collision Check
-            if (Math.abs(ghost.x - pacman.x) < 0.5 && Math.abs(ghost.y - pacman.y) < 0.5) {
-                alert("You caught Pac-Man!");
+            let collision = (pBox.x1 < gBox.x2 && pBox.x2 > gBox.x1 && pBox.y1 < gBox.y2 && pBox.y2 > gBox.y1);
+
+            if (collision) {
+                if (powerPelletTimer > 0) {
+                    alert("Pac-Man ate you! Game Over.");
+                } else {
+                    alert("You caught Pac-Man! Victory!");
+                }
                 location.reload();
+                return;
+            }
+
+            // Handle clean checks against AI companions
+            for (let g of aiGhosts) {
+                if (pBox.x1 < g.x + tileSize && pBox.x2 > g.x && pBox.y1 < g.y + tileSize && pBox.y2 > g.y && powerPelletTimer > 0) {
+                    alert("Pac-Man ate one of your teammate ghosts! Game Over.");
+                    location.reload();
+                    return;
+                }
             }
 
             requestAnimationFrame(draw);
@@ -155,4 +334,3 @@
     </script>
 </body>
 </html>
-
