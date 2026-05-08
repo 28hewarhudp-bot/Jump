@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Reverse Pac-Man - Arcade Mode</title>
+    <title>Reverse Pac-Man - Tunnel Mode</title>
     <style>
         body { background: #000; color: yellow; text-align: center; font-family: 'Courier New', Courier, monospace; }
         canvas { border: 4px solid #191970; display: block; margin: 20px auto; background: #000; box-shadow: 0 0 20px #0000FF; }
@@ -10,29 +10,30 @@
 </head>
 <body>
     <h1>REVERSE PAC-MAN</h1>
-    <div class="controls">Move Blinky with Arrow Keys • Protect the Pellets!</div>
+    <div class="controls">USE THE SIDE TUNNELS TO WARP! • ARROW KEYS TO MOVE</div>
     <canvas id="gameCanvas" width="380" height="420"></canvas>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const TILE = 20;
+        const GRID_WIDTH = 19;
 
-        // 1=Wall, 0=Dot, 2=Empty/Ghost House, 3=Power Pellet, 4=House Gate
+        // 1=Wall, 0=Dot, 2=Ghost House, 3=Power Pellet, 4=House Gate
         const mapGrid = [
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
             [1,3,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,3,1],
             [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
             [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
             [1,1,1,1,0,1,1,1,2,2,2,1,1,1,0,1,1,1,1],
-            [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
+            [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2], // Tunnel Entrance Row
             [1,1,1,1,0,1,2,1,4,4,4,1,2,1,0,1,1,1,1],
-            [2,2,2,2,0,2,2,1,2,2,2,1,2,2,0,2,2,2,2],
+            [2,2,2,2,0,2,2,1,2,2,2,1,2,2,0,2,2,2,2], // Tunnel Entrance Row
             [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
-            [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
-            [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
+            [1,1,1,1,0,1,2,2,2,2,2,2,2,1,0,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
             [1,3,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,3,1],
@@ -42,10 +43,6 @@
         ];
 
         let player = { x: 9, y: 13, color: "red", dir: "LEFT", nextDir: "LEFT" };
-        let ghosts = [
-            { x: 8, y: 9, color: "#FFB8FF", dir: "UP" },
-            { x: 10, y: 9, color: "#00FFFF", dir: "UP" }
-        ];
         let pacman = { x: 9, y: 15, dir: "LEFT" };
 
         function drawGhost(x, y, color) {
@@ -63,20 +60,22 @@
             ctx.arc(px - 3, py - 3, 2.5, 0, Math.PI * 2);
             ctx.arc(px + 3, py - 3, 2.5, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = "blue";
-            ctx.beginPath();
-            ctx.arc(px - 3, py - 3, 1, 0, Math.PI * 2);
-            ctx.arc(px + 3, py - 3, 1, 0, Math.PI * 2);
-            ctx.fill();
         }
 
         function isWall(x, y) {
-            if (x < 0 || x >= 19) return false;
-            return mapGrid[y] && (mapGrid[y][x] === 1 || mapGrid[y][x] === 4);
+            // Check if coordinates are within vertical map bounds
+            if (y < 0 || y >= mapGrid.length) return true;
+            // Handle Horizontal Warp (No wall check for the tunnel exits)
+            if (x < 0 || x >= GRID_WIDTH) return false;
+            return mapGrid[y][x] === 1;
+        }
+
+        function handleWarp(entity) {
+            if (entity.x = GRID_WIDTH) entity.x = 0;
         }
 
         function update() {
-            // Player Move
+            // Player Movement
             let nx = player.x, ny = player.y;
             if (player.nextDir === "UP") ny--;
             else if (player.nextDir === "DOWN") ny++;
@@ -84,17 +83,20 @@
             else if (player.nextDir === "RIGHT") nx++;
             
             if (!isWall(nx, ny)) {
-                player.x = nx; player.y = ny;
+                player.x = nx; 
+                player.y = ny;
                 player.dir = player.nextDir;
+                handleWarp(player); // Check for teleport
             }
 
-            // Pac-Man Simple AI
+            // Pac-Man Random AI
             const dirs = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
             let move = dirs[Math.floor(Math.random()*4)];
             if (!isWall(pacman.x + move.x, pacman.y + move.y)) {
-                pacman.x += move.x; pacman.y += move.y;
+                pacman.x += move.x; 
+                pacman.y += move.y;
+                handleWarp(pacman); // Check for teleport
             }
-
             draw();
         }
 
@@ -112,12 +114,13 @@
                         ctx.arc(x * TILE + 10, y * TILE + 10, v === 3 ? 4 : 1.5, 0, 7);
                         ctx.fill();
                     } else if (v === 4) {
-                        ctx.fillStyle = "#ffb8ff";
+                        ctx.fillStyle = "#ffb8ff"; // House Gate
                         ctx.fillRect(x * TILE, y * TILE + 8, TILE, 4);
                     }
                 });
             });
 
+            // Pac-Man
             ctx.fillStyle = "yellow";
             ctx.beginPath();
             ctx.arc(pacman.x * TILE + 10, pacman.y * TILE + 10, 8, 0.2 * Math.PI, 1.8 * Math.PI);
@@ -125,7 +128,6 @@
             ctx.fill();
 
             drawGhost(player.x, player.y, player.color);
-            ghosts.forEach(g => drawGhost(g.x, g.y, g.color));
         }
 
         window.addEventListener("keydown", e => {
