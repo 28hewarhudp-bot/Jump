@@ -1,30 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>First Person Pac-Man</title>
-    <link rel="stylesheet" type="text/css" href="https://googleapis.com">
-    <style type="text/css">
-        body { background-color: black; margin: 0; overflow: hidden; color: white; text-align: center; }
-        canvas { display: block; margin: 20px auto; border: 4px solid #0000FF; background: #000; }
-        h1 { font-family: 'Permanent Marker', cursive; color: yellow; margin: 10px; }
-        .ui { font-family: sans-serif; color: #555; margin-bottom: 10px; }
+    <title>First Person Pac-Man - WASD</title>
+    <style>
+        body { background: #000; color: yellow; text-align: center; margin: 0; overflow: hidden; font-family: sans-serif; }
+        canvas { border: 5px solid #00F; display: block; margin: 10px auto; cursor: crosshair; }
+        .hint { color: #555; font-size: 14px; text-transform: uppercase; }
     </style>
 </head>
 <body>
     <h1>FPS PAC-MAN</h1>
-    <div class="ui">CLICK SCREEN - USE ARROWS TO MOVE</div>
-    <div id="game-container"></div>
+    <p class="hint">CLICK THE BOX - USE [W A S D] TO MOVE</p>
+    <canvas id="game" width="640" height="480"></canvas>
 
-    <script src="https://cloudflare.com"></script>
-    <script type="text/javascript">
-        // --- CONSTANTS ---
-        var NONE = 4, UP = 3, LEFT = 2, DOWN = 1, RIGHT = 11;
-        
-        // --- MAP DATA ---
-        var maze = [
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+
+        // 0 = Wall, 1 = Dot, 2 = Empty
+        const maze = [
             [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
             [0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,0],
-            [0,3,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,3,0],
+            [0,1,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0],
             [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
             [0,1,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0,1,0],
             [0,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,0],
@@ -37,7 +34,7 @@
             [0,0,0,0,1,0,2,0,0,0,0,0,2,0,1,0,0,0,0],
             [0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,0],
             [0,1,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0],
-            [0,3,1,0,1,1,1,1,1,2,1,1,1,1,1,0,1,3,0],
+            [0,1,1,0,1,1,1,1,1,2,1,1,1,1,1,0,1,1,0],
             [0,0,1,0,1,0,1,0,0,0,0,0,1,0,1,0,1,0,0],
             [0,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,1,0],
             [0,1,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0],
@@ -45,74 +42,60 @@
             [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         ];
 
-        // --- PLAYER ---
-        var player = {
-            x: 9.5, y: 15.5,
-            dir: Math.PI, // Face North
-            fov: Math.PI / 3
-        };
+        let player = { x: 9.5, y: 15.5, dir: 0 };
+        const keys = {};
 
-        // --- INPUTS ---
-        var keys = {};
-        $(document).keydown(function(e) { keys[e.keyCode] = true; });
-        $(document).keyup(function(e) { keys[e.keyCode] = false; });
+        // Track WASD keys
+        window.onkeydown = (e) => { keys[e.code] = true; };
+        window.onkeyup = (e) => keys[e.code] = false;
 
-        // --- RENDERER ---
-        function drawFrame() {
-            var canvas = document.getElementById('fpsCanvas');
-            if(!canvas) return;
-            var ctx = canvas.getContext('2d');
-            
-            // Movement logic
-            var moveSpeed = 0.07;
-            var rotSpeed = 0.05;
-            if(keys[37]) player.dir -= rotSpeed; // Left
-            if(keys[39]) player.dir += rotSpeed; // Right
-            if(keys[38]) { // Up
-                var nx = player.x + Math.sin(player.dir) * moveSpeed;
-                var ny = player.y + Math.cos(player.dir) * moveSpeed;
-                if(maze[Math.floor(ny)][Math.floor(nx)] !== 0) { player.x = nx; player.y = ny; }
-            }
-            if(keys[40]) { // Down
-                var nx = player.x - Math.sin(player.dir) * moveSpeed;
-                var ny = player.y - Math.cos(player.dir) * moveSpeed;
-                if(maze[Math.floor(ny)][Math.floor(nx)] !== 0) { player.x = nx; player.y = ny; }
+        function loop() {
+            // Turn Left (A)
+            if (keys['KeyA']) player.dir -= 0.05;
+            // Turn Right (D)
+            if (keys['KeyD']) player.dir += 0.05;
+
+            // Move Forward/Backward (W/S)
+            if (keys['KeyW'] || keys['KeyS']) {
+                let speed = keys['KeyW'] ? 0.06 : -0.06;
+                let nextX = player.x + Math.sin(player.dir) * speed;
+                let nextY = player.y + Math.cos(player.dir) * speed;
+                
+                // Collision check
+                if (maze[Math.floor(nextY)][Math.floor(nextX)] !== 0) {
+                    player.x = nextX;
+                    player.y = nextY;
+                }
             }
 
-            // Ceiling/Floor
-            ctx.fillStyle = "#111"; ctx.fillRect(0,0,640,240);
-            ctx.fillStyle = "#222"; ctx.fillRect(0,240,640,480);
+            // Draw Ceiling and Floor
+            ctx.fillStyle = '#111'; ctx.fillRect(0, 0, 640, 240);
+            ctx.fillStyle = '#222'; ctx.fillRect(0, 240, 640, 240);
 
-            // Raycasting
-            for(var i=0; i<640; i++) {
-                var rayAngle = (player.dir - player.fov/2) + (i/640) * player.fov;
-                var dist = 0;
-                var hit = false;
-                var step = 0.05;
-
-                while(!hit && dist < 15) {
-                    dist += step;
-                    var tx = Math.floor(player.x + Math.sin(rayAngle) * dist);
-                    var ty = Math.floor(player.y + Math.cos(rayAngle) * dist);
-                    if(maze[ty] && maze[ty][tx] === 0) hit = true;
+            // Raycasting Rendering
+            for (let i = 0; i < 640; i++) {
+                let rayAngle = (player.dir - 0.5) + (i / 640);
+                let dist = 0;
+                let hit = false;
+                
+                while (!hit && dist < 15) {
+                    dist += 0.05;
+                    let tx = Math.floor(player.x + Math.sin(rayAngle) * dist);
+                    let ty = Math.floor(player.y + Math.cos(rayAngle) * dist);
+                    if (maze[ty][tx] === 0) hit = true;
                 }
 
-                var wallH = Math.min(480, 480 / dist);
-                var brightness = 255 / (1 + dist * dist * 0.1);
-                ctx.strokeStyle = "rgb(0, 0, " + brightness + ")";
+                let h = 480 / dist;
+                ctx.strokeStyle = `rgb(0, 0, ${255 / (1 + dist * 0.2)})`;
                 ctx.beginPath();
-                ctx.moveTo(i, 240 - wallH/2);
-                ctx.lineTo(i, 240 + wallH/2);
+                ctx.moveTo(i, 240 - h / 2);
+                ctx.lineTo(i, 240 + h / 2);
                 ctx.stroke();
             }
-            requestAnimationFrame(drawFrame);
+            requestAnimationFrame(loop);
         }
 
-        $(document).ready(function() {
-            var c = $('<canvas id="fpsCanvas" width="640" height="480">');
-            $('#game-container').append(c);
-            drawFrame();
-        });
+        loop();
     </script>
 </body>
 </html>
