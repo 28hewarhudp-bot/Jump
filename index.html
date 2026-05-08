@@ -1,129 +1,129 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Fixed Pac-Man AI Movement</title>
+<title>Pac-Man AI Fixed</title>
 <style>
 body { margin:0; background:black; text-align:center; }
 canvas { background:black; margin-top:10px; }
-h1 { color:yellow; font-family:sans-serif; }
 </style>
 </head>
 <body>
 
-<h1>Fixed Movement Pac-Man vs Ghosts</h1>
-
-<canvas id="c" width="420" height="420"></canvas>
+<canvas id="game" width="420" height="420"></canvas>
 
 <script>
-
-const ctx = document.getElementById("c").getContext("2d");
+const ctx = document.getElementById("game").getContext("2d");
 const S = 20;
 
-// ===== MAP =====
-let map = [
+// ===== REAL PAC-MAN STYLE MAZE =====
+const map = [
 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,0],
+[0,1,0,0,0,1,0,1,0,0,0,1,0,1,0,0,0,0,1,0],
+[0,1,0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,0],
+[0,1,0,1,0,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0],
 [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-[0,1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1,0],
-[0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,0,1,1,0],
-[0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,1,0,1,0,0],
-[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-[0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+[0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1,0],
 [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 ];
 
 // ===== ENTITIES =====
-let player = {x:1,y:1};
-let pacman = {x:18,y:6};
-
+let pac = {x:1,y:1,dir:{x:0,y:0}};
 let ghosts = [
- {x:10,y:1,dir:{x:1,y:0}},
- {x:15,y:3,dir:{x:-1,y:0}},
- {x:5,y:6,dir:{x:0,y:1}}
+{x:18,y:1,dir:{x:-1,y:0}},
+{x:18,y:7,dir:{x:-1,y:0}},
+{x:1,y:7,dir:{x:1,y:0}}
 ];
 
-let dir = {x:0,y:0};
-
-let pacTimer = 0;
-let pacSpeed = 12; // slower movement
-
-// ===== INPUT (smooth movement) =====
-document.addEventListener("keydown",e=>{
- if(e.key==="ArrowLeft")dir={x:-1,y:0};
- if(e.key==="ArrowRight")dir={x:1,y:0};
- if(e.key==="ArrowUp")dir={x:0,y:-1};
- if(e.key==="ArrowDown")dir={x:0,y:1};
-});
-
-// ===== WALL CHECK =====
+// ===== HELPERS =====
 function wall(x,y){
- return map[y] && map[y][x]===0;
+ return map[y] && map[y][x] === 0;
 }
 
-// ===== PLAYER (continuous movement) =====
-function movePlayer(){
- let nx = player.x + dir.x;
- let ny = player.y + dir.y;
-
- if(!wall(nx,ny)){
-  player.x = nx;
-  player.y = ny;
+function pelletsLeft(){
+ for(let y=0;y<map.length;y++){
+  for(let x=0;x<map[0].length;x++){
+   if(map[y][x]===1) return true;
+  }
  }
+ return false;
 }
 
-// ===== PAC-MAN (SLOW GRID MOVEMENT) =====
+// ===== PAC-MAN AI (CHASE NEAREST PELLET) =====
 function movePac(){
- pacTimer++;
-
- if(pacTimer < pacSpeed) return;
- pacTimer = 0;
-
  let target = null;
+ let minD = 9999;
 
- // find nearest pellet
  for(let y=0;y<map.length;y++){
   for(let x=0;x<map[0].length;x++){
    if(map[y][x]===1){
-    target = {x,y};
-    break;
+    let d = Math.abs(x-pac.x)+Math.abs(y-pac.y);
+    if(d < minD){
+     minD = d;
+     target = {x,y};
+    }
    }
   }
-  if(target) break;
  }
 
- let dx = target.x - pacman.x;
- let dy = target.y - pacman.y;
+ let dx = target.x - pac.x;
+ let dy = target.y - pac.y;
 
- let nx = pacman.x + (dx>0?1:dx<0?-1:0);
- let ny = pacman.y + (dy>0?1:dy<0?-1:0);
+ let moves = [];
 
- if(!wall(nx,ny)){
-  pacman.x = nx;
-  pacman.y = ny;
+ if(dx !== 0){
+  moves.push({x:dx>0?1:-1,y:0});
+ }
+ if(dy !== 0){
+  moves.push({x:0,y:dy>0?1:-1});
+ }
+
+ for(let m of moves){
+  let nx = pac.x + m.x;
+  let ny = pac.y + m.y;
+
+  if(!wall(nx,ny)){
+   pac.x = nx;
+   pac.y = ny;
+   break;
+  }
  }
 
  // eat pellet
- if(map[pacman.y][pacman.x]===1){
-  map[pacman.y][pacman.x]=2;
+ if(map[pac.y][pac.x]===1){
+  map[pac.y][pac.x]=2;
  }
 }
 
-// ===== GHOST AI (WALL BOUNCE MOVEMENT) =====
+// ===== GHOST AI (CHASE PAC-MAN BUT BOUNCE) =====
 function moveGhost(g){
 
- let nx = g.x + g.dir.x;
- let ny = g.y + g.dir.y;
+ let options = [
+  {x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}
+ ];
 
- if(wall(nx,ny)){
-  // choose new direction
-  let dirs = [
-   {x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}
-  ];
+ let best = null;
+ let bestD = 9999;
 
-  g.dir = dirs[Math.floor(Math.random()*4)];
+ for(let o of options){
+  let nx = g.x + o.x;
+  let ny = g.y + o.y;
+
+  if(!wall(nx,ny)){
+   let d = Math.abs(nx-pac.x)+Math.abs(ny-pac.y);
+   if(d < bestD){
+    bestD = d;
+    best = o;
+   }
+  }
+ }
+
+ if(best){
+  g.x += best.x;
+  g.y += best.y;
  } else {
-  g.x = nx;
-  g.y = ny;
+  g.dir = options[Math.floor(Math.random()*4)];
  }
 }
 
@@ -152,32 +152,24 @@ function draw(){
  // pacman
  ctx.fillStyle="yellow";
  ctx.beginPath();
- ctx.arc(pacman.x*S,pacman.y*S,8,0,Math.PI*2);
- ctx.fill();
-
- // player
- ctx.fillStyle="cyan";
- ctx.beginPath();
- ctx.arc(player.x*S,player.y*S,8,0,Math.PI*2);
+ ctx.arc(pac.x*S,pac.y*S,8,0,Math.PI*2);
  ctx.fill();
 
  // ghosts
  for(let g of ghosts){
-  ctx.fillStyle="pink";
+  ctx.fillStyle="red";
   ctx.beginPath();
   ctx.arc(g.x*S,g.y*S,8,0,Math.PI*2);
   ctx.fill();
  }
 }
 
-// ===== LOOP =====
+// ===== GAME LOOP =====
 function loop(){
 
- movePlayer();
- movePac();
-
- for(let g of ghosts){
-  moveGhost(g);
+ if(pelletsLeft()){
+  movePac();
+  for(let g of ghosts) moveGhost(g);
  }
 
  draw();
@@ -187,6 +179,5 @@ function loop(){
 loop();
 
 </script>
-
 </body>
 </html>
