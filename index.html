@@ -1,53 +1,142 @@
-function drawSprites(){
-  let sprites = [];
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Ghost Player vs AI Pacman</title>
+<style>
+  body { margin:0; overflow:hidden; background:black; }
+  #hud { position:absolute; top:10px; left:10px; color:white; font-family:sans-serif; }
+</style>
+</head>
+<body>
+<div id="hud">YOU ARE THE GHOST 👻 | WASD move | AI Pacman eats pellets</div>
+<canvas id="game"></canvas>
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+canvas.width=innerWidth;
+canvas.height=innerHeight;
 
-  // pellets
-  for(let p of pellets){
-    sprites.push({x:p.x,y:p.y,color:"yellow",size:6});
-  }
+const map=[
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1],
+[1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1],
+[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
+[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1],
+[1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
 
-  // ghosts (FORCED visible overlay style)
-  for(let g of ghosts){
-    sprites.push({x:g.x,y:g.y,color:g.color,size:14});
-  }
+let gx=2,gy=2,ga=0; // YOU = GHOST
+let px=20,py=6;      // AI PACMAN
 
-  // sort far → near
-  sprites.sort((a,b)=>{
-    return Math.hypot(b.x-px,b.y-py)-Math.hypot(a.x-px,a.y-py);
-  });
+const keys={};
+addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-  for(let s of sprites){
-    let dx = s.x - px;
-    let dy = s.y - py;
-    let dist = Math.hypot(dx,dy);
-
-    let angle = Math.atan2(dy,dx) - pa;
-
-    while(angle < -Math.PI) angle += Math.PI*2;
-    while(angle > Math.PI) angle -= Math.PI*2;
-
-    // wider FOV so nothing disappears
-    const fov = Math.PI;
-
-    if(Math.abs(angle) < fov){
-      let screenX = (angle/fov + 0.5) * canvas.width;
-
-      // IMPORTANT FIX: no perspective scaling that hides ghosts
-      let size = s.size * 10;
-
-      ctx.fillStyle = s.color;
-      ctx.beginPath();
-      ctx.arc(screenX, canvas.height/2, size, 0, Math.PI*2);
-      ctx.fill();
-
-      // ghost “face glow” so you ALWAYS see them
-      if(s.color !== "yellow"){
-        ctx.fillStyle = "white";
-        ctx.beginPath();
-        ctx.arc(screenX-3, canvas.height/2-2, 2, 0, Math.PI*2);
-        ctx.arc(screenX+3, canvas.height/2-2, 2, 0, Math.PI*2);
-        ctx.fill();
-      }
-    }
+let pellets=[];
+for(let y=0;y<map.length;y++){
+  for(let x=0;x<map[y].length;x++){
+    if(map[y][x]==0) pellets.push({x,y});
   }
 }
+
+function isWall(x,y){
+  return map[Math.floor(y)]?.[Math.floor(x)]===1;
+}
+
+// PLAYER GHOST MOVEMENT
+function moveGhostPlayer(){
+  const s=0.06;
+  if(keys["w"]){let nx=gx+Math.cos(ga)*s,ny=gy+Math.sin(ga)*s;if(!isWall(nx,ny)){gx=nx;gy=ny;}}
+  if(keys["s"]){let nx=gx-Math.cos(ga)*s,ny=gy-Math.sin(ga)*s;if(!isWall(nx,ny)){gx=nx;gy=ny;}}
+  if(keys["a"])ga-=0.04;
+  if(keys["d"])ga+=0.04;
+}
+
+// AI PACMAN
+function movePacmanAI(){
+  let target = pellets[0];
+  if(!target) return;
+
+  let dx = target.x - px;
+  let dy = target.y - py;
+
+  let sp=0.04;
+  let nx = px + Math.sign(dx)*sp;
+  let ny = py + Math.sign(dy)*sp;
+
+  if(!isWall(nx,py)) px=nx;
+  if(!isWall(px,ny)) py=ny;
+}
+
+function eatPellets(){
+  pellets = pellets.filter(p=>Math.hypot(px-p.x,py-p.y)>0.3);
+}
+
+// RENDER
+function render(){
+  ctx.fillStyle="black";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // draw walls (simple 3D ray)
+  const fov=Math.PI/3;
+  const rays=120;
+
+  for(let i=0;i<rays;i++){
+    const ra=ga-fov/2+(i/rays)*fov;
+    let dist=0,hit=false;
+    const ex=Math.cos(ra);
+    const ey=Math.sin(ra);
+
+    while(!hit&&dist<25){
+      dist+=0.05;
+      let tx=gx+ex*dist;
+      let ty=gy+ey*dist;
+      if(isWall(tx,ty))hit=true;
+    }
+
+    const h=(canvas.height/dist)*0.8;
+    ctx.fillStyle=`rgb(0,0,${255-dist*10})`;
+    ctx.fillRect(i*(canvas.width/rays),canvas.height/2-h/2,canvas.width/rays+1,h);
+  }
+
+  drawSprites();
+}
+
+// FIXED VISIBILITY SPRITES
+function drawSprites(){
+  let objs=[];
+
+  // pellets
+  for(let p of pellets){objs.push({x:p.x,y:p.y,c:"yellow",s:5});}
+
+  // pacman AI
+  objs.push({x:px,y:py,c:"yellow",s:18});
+
+  // YOU (ghost)
+  objs.push({x:gx,y:gy,c:"red",s:22});
+
+  objs.sort((a,b)=>Math.hypot(b.x-gx,b.y-gy)-Math.hypot(a.x-gx,a.y-gy));
+
+  for(let o of objs){
+    let dx=o.x-gx;
+    let dy=o.y-gy;
+    let dist=Math.hypot(dx,dy);
+
+    let angle=Math.atan2(dy,dx)-ga;
+    while(angle<-Math.PI)angle+=Math.PI*2;
+    while(angle>Math.PI)angle-=Math.PI*2;
+
+    const fov=Math.PI;
+
+    if(Math.abs(angle)<fov){
+      let x=(angle/fov+0.5)*canvas.width;
+      let size=o.s;
+
+      ctx.fillStyle=o.c;
+      ctx.beginPath();
+      ctx.arc(x,canvas.height/2,size,0,Math.PI*2);
+      ctx
