@@ -1,211 +1,158 @@
- /* Modified Pac-Man: You are the Ghost! */
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reverse Pac-Man - Ghost Mode</title>
+    <style>
+        body { background: #000; color: yellow; text-align: center; font-family: sans-serif; }
+        canvas { border: 2px solid #0000FF; display: block; margin: 20px auto; background: #000; }
+        .controls { color: #fff; font-size: 0.9em; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Reverse Pac-Man</h1>
+    <div class="controls">USE ARROW KEYS TO MOVE THE RED GHOST. CATCH PAC-MAN!</div>
+    <canvas id="gameCanvas" width="380" height="400"></canvas>
 
-var NONE = 4, UP = 3, LEFT = 2, DOWN = 1, RIGHT = 11,
-    WAITING = 5, PAUSE = 6, PLAYING = 7, COUNTDOWN = 8,
-    EATEN_PAUSE = 9, DYING = 10, Pacman = {};
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const tileSize = 20;
 
-Pacman.FPS = 30;
+        // 1 = Wall, 0 = Pellet, 2 = Empty
+        let mapGrid = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
+            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+            [1,1,1,1,0,1,1,1,2,1,2,1,1,1,0,1,1,1,1],
+            [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
+            [1,1,1,1,0,1,2,1,1,2,1,1,2,1,0,1,1,1,1],
+            [2,2,2,2,0,2,2,1,2,2,2,1,2,2,0,2,2,2,2],
+            [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
+            [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
+            [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+            [1,0,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,0,1],
+            [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
+            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
 
-// GHOST CLASS (Now the Player)
-Pacman.Ghost = function (game, map, colour) {
-    var position = null, direction = null, due = null;
-    
-    // The red ghost (Blinky) will follow User Input
-    var isPlayerControlled = (colour === "#F00");
+        let ghost = { x: 9, y: 11, dir: "UP", nextDir: "UP" };
+        let pacman = { x: 9, y: 15, dir: "LEFT", nextDir: "LEFT", speed: 0.1 };
 
-    function getNewCoord(dir, current) { 
-        var speed = 2; // Ghost speed
-        return {
-            "x": addBounded(current.x, (dir === LEFT && -speed || dir === RIGHT && speed || 0)),
-            "y": addBounded(current.y, (dir === DOWN && speed || dir === UP && -speed || 0))
-        };
-    };
+        window.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowUp") ghost.nextDir = "UP";
+            if (e.key === "ArrowDown") ghost.nextDir = "DOWN";
+            if (e.key === "ArrowLeft") ghost.nextDir = "LEFT";
+            if (e.key === "ArrowRight") ghost.nextDir = "RIGHT";
+        });
 
-    function addBounded(x1, x2) { 
-        var rem = x1 % 10, result = rem + x2;
-        if (rem !== 0 && result > 10) return x1 + (10 - rem);
-        else if(rem > 0 && result < 0) return x1 - rem;
-        return x1 + x2;
-    };
-    
-    function reset() {
-        position = isPlayerControlled ? {"x": 90, "y": 80} : {"x": 90, "y": 80};
-        direction = UP;
-        due = UP;
-    };
-    
-    function draw(ctx) {
-        var s = map.blockSize, top = (position.y/10) * s, left = (position.x/10) * s;
-        ctx.fillStyle = colour;
-        ctx.beginPath();
-        ctx.moveTo(left, top + s);
-        ctx.quadraticCurveTo(left, top, left + (s/2),  top);
-        ctx.quadraticCurveTo(left + s, top, left+s,  top + s);
-        ctx.fill();
-        // Eyes
-        ctx.fillStyle = "#FFF";
-        ctx.arc(left + 6, top + 6, s / 6, 0, 300, false);
-        ctx.arc((left + s) - 6, top + 6, s / 6, 0, 300, false);
-        ctx.fill();
-    };
-
-    function move(ctx) {
-        if (isPlayerControlled) {
-            due = game.getUserInput(); // User drives the Red Ghost
-        } else {
-            if (Math.random() > 0.95) due = [UP,DOWN,LEFT,RIGHT][Math.floor(Math.random()*4)];
+        function isWall(x, y) {
+            let row = Math.floor(y);
+            let col = Math.floor(x);
+            return mapGrid[row] && mapGrid[row][col] === 1;
         }
 
-        var npos = getNewCoord(due, position);
-        if (position.x % 10 === 0 && position.y % 10 === 0 &&
-            map.isFloorSpace({"y":Math.round(npos.y/10),"x":Math.round(npos.x/10)})) {
-            direction = due;
+        function updateAI() {
+            // Calculate distance to ghost
+            let dist = Math.sqrt(Math.pow(pacman.x - ghost.x, 2) + Math.pow(pacman.y - ghost.y, 2));
+            
+            // PAC-MAN AI: RUN AWAY if you are close (within 4 tiles)
+            if (dist < 4) {
+                if (ghost.x > pacman.x) pacman.nextDir = "LEFT";
+                else pacman.nextDir = "RIGHT";
+                if (ghost.y > pacman.y) pacman.nextDir = "UP";
+                else pacman.nextDir = "DOWN";
+            } else {
+                // SEEK PELLETS: Simple logic to wander toward pellets
+                if (Math.random() < 0.05) {
+                    let dirs = ["UP", "DOWN", "LEFT", "RIGHT"];
+                    pacman.nextDir = dirs[Math.floor(Math.random() * 4)];
+                }
+            }
+
+            moveEntity(pacman, 0.08);
+            
+            // Eat Pellets
+            let r = Math.round(pacman.y);
+            let c = Math.round(pacman.x);
+            if (mapGrid[r] && mapGrid[r][c] === 0) mapGrid[r][c] = 2;
         }
 
-        npos = getNewCoord(direction, position);
-        if (map.isWallSpace({"y":Math.round(npos.y/10),"x":Math.round(npos.x/10)})) {
-            return; 
-        }
+        function moveEntity(ent, spd) {
+            let nx = ent.x, ny = ent.y;
+            if (ent.nextDir === "UP") ny -= spd;
+            if (ent.nextDir === "DOWN") ny += spd;
+            if (ent.nextDir === "LEFT") nx -= spd;
+            if (ent.nextDir === "RIGHT") nx += spd;
 
-        position = npos;
-    };
-
-    return { "draw": draw, "move": move, "reset": reset, "getPosition": function(){return position;} };
-};
-
-// PACMAN CLASS (Now the AI)
-Pacman.User = function (game, map) {
-    var position = null, direction = null, due = null;
-
-    function reset() {
-        position = {"x": 90, "y": 120};
-        direction = LEFT;
-        due = LEFT;
-    };
-
-    function getDistance(p1, p2) {
-        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-    }
-
-    function move(ctx) {
-        var ghostPos = game.getGhostPosition();
-        var dist = getDistance(position, ghostPos);
-
-        // PAC-MAN AI: 
-        // If player (ghost) is closer than 50 units, run away!
-        if (dist < 50) {
-            if (ghostPos.x > position.x) due = LEFT;
-            else due = RIGHT;
-            if (ghostPos.y > position.y) due = UP;
-            else due = DOWN;
-        } else {
-            // Otherwise, just wander/look for pellets (Simplified)
-            if (Math.random() > 0.9) due = [UP,DOWN,LEFT,RIGHT][Math.floor(Math.random()*4)];
-        }
-
-        var npos = {"x": position.x + (due===LEFT?-2:due===RIGHT?2:0), "y": position.y + (due===UP?-2:due===DOWN?2:0)};
-        
-        if (position.x % 10 === 0 && position.y % 10 === 0 &&
-            map.isFloorSpace({"y":Math.round(npos.y/10),"x":Math.round(npos.x/10)})) {
-            direction = due;
-        }
-
-        var movePos = {"x": position.x + (direction===LEFT?-2:direction===RIGHT?2:0), "y": position.y + (direction===UP?-2:direction===DOWN?2:0)};
-        if (!map.isWallSpace({"y":Math.round(movePos.y/10),"x":Math.round(movePos.x/10)})) {
-            position = movePos;
-        }
-        
-        // Eat pellets
-        if (position.x % 10 === 0 && position.y % 10 === 0) {
-            map.eatPellet(position.y/10, position.x/10);
-        }
-    };
-
-    function draw(ctx) {
-        var s = map.blockSize, top = (position.y/10) * s, left = (position.x/10) * s;
-        ctx.fillStyle = "yellow";
-        ctx.beginPath();
-        ctx.arc(left + s/2, top + s/2, s/2, 0.2 * Math.PI, 1.8 * Math.PI);
-        ctx.lineTo(left + s/2, top + s/2);
-        ctx.fill();
-    };
-
-    return { "draw": draw, "move": move, "reset": reset, "getPosition": function(){return position;} };
-};
-
-// MAP AND GAME ENGINE (Simplified setup)
-Pacman.Map = function (size) {
-    this.blockSize = size;
-    this.grid = [
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-        [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
-        [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-    ];
-    this.isWallSpace = function(p) { return this.grid[p.y] && this.grid[p.y][p.x] === 1; };
-    this.isFloorSpace = function(p) { return !this.isWallSpace(p); };
-    this.eatPellet = function(y, x) { if(this.grid[y]) this.grid[y][x] = 2; };
-};
-
-// Start the game logic
-$(document).ready(function() {
-    var canvas = document.createElement("canvas");
-    canvas.width = 380; canvas.height = 400;
-    $("#pacman").append(canvas);
-    var ctx = canvas.getContext('2d');
-    
-    var map = new Pacman.Map(20);
-    var user = new Pacman.User(null, map); // Pacman AI
-    var ghost = new Pacman.Ghost({ 
-        getUserInput: function() { return currentInput; },
-        getGhostPosition: function() { return ghost.getPosition(); }
-    }, map, "#F00");
-
-    var currentInput = RIGHT;
-    $(window).keydown(function(e) {
-        if (e.keyCode === 37) currentInput = LEFT;
-        if (e.keyCode === 38) currentInput = UP;
-        if (e.keyCode === 39) currentInput = RIGHT;
-        if (e.keyCode === 40) currentInput = DOWN;
-    });
-
-    user.reset();
-    ghost.reset();
-
-    function loop() {
-        ctx.fillStyle = "black";
-        ctx.fillRect(0,0,canvas.width, canvas.height);
-        
-        // Draw simple walls
-        ctx.fillStyle = "blue";
-        for(var y=0; y<map.grid.length; y++) {
-            for(var x=0; x<map.grid[y].length; x++) {
-                if(map.grid[y][x] === 1) ctx.fillRect(x*20, y*20, 20, 20);
-                if(map.grid[y][x] === 0) {
-                    ctx.fillStyle = "white";
-                    ctx.fillRect(x*20+8, y*20+8, 4, 4);
-                    ctx.fillStyle = "blue";
+            if (!isWall(nx, ny) && !isWall(nx + 0.9, ny + 0.9)) {
+                ent.x = nx; ent.y = ny; ent.dir = ent.nextDir;
+            } else {
+                // Try current direction
+                nx = ent.x; ny = ent.y;
+                if (ent.dir === "UP") ny -= spd;
+                if (ent.dir === "DOWN") ny += spd;
+                if (ent.dir === "LEFT") nx -= spd;
+                if (ent.dir === "RIGHT") nx += spd;
+                if (!isWall(nx, ny) && !isWall(nx + 0.9, ny + 0.9)) {
+                    ent.x = nx; ent.y = ny;
                 }
             }
         }
 
-        user.move();
-        user.draw(ctx);
-        ghost.move();
-        ghost.draw(ctx);
+        function draw() {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Check Collision (Ghost catches Pacman)
-        var p1 = user.getPosition();
-        var p2 = ghost.getPosition();
-        if (Math.abs(p1.x - p2.x) < 5 && Math.abs(p1.y - p2.y) < 5) {
-            alert("You caught Pac-Man!");
-            user.reset();
-            ghost.reset();
+            // Draw Map
+            for (let r = 0; r < mapGrid.length; r++) {
+                for (let c = 0; c < mapGrid[r].length; c++) {
+                    if (mapGrid[r][c] === 1) {
+                        ctx.fillStyle = "blue";
+                        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+                    } else if (mapGrid[r][c] === 0) {
+                        ctx.fillStyle = "white";
+                        ctx.beginPath();
+                        ctx.arc(c * tileSize + 10, r * tileSize + 10, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // Draw Ghost (Player)
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.arc(ghost.x * tileSize + 10, ghost.y * tileSize + 10, 8, Math.PI, 0);
+            ctx.lineTo(ghost.x * tileSize + 18, ghost.y * tileSize + 18);
+            ctx.lineTo(ghost.x * tileSize + 2, ghost.y * tileSize + 18);
+            ctx.fill();
+
+            // Draw Pacman (AI)
+            ctx.fillStyle = "yellow";
+            ctx.beginPath();
+            ctx.arc(pacman.x * tileSize + 10, pacman.y * tileSize + 10, 8, 0.2 * Math.PI, 1.8 * Math.PI);
+            ctx.lineTo(pacman.x * tileSize + 10, pacman.y * tileSize + 10);
+            ctx.fill();
+
+            moveEntity(ghost, 0.12);
+            updateAI();
+
+            // Collision Check
+            if (Math.abs(ghost.x - pacman.x) < 0.5 && Math.abs(ghost.y - pacman.y) < 0.5) {
+                alert("You caught Pac-Man!");
+                location.reload();
+            }
+
+            requestAnimationFrame(draw);
         }
 
-        requestAnimationFrame(loop);
-    }
-    loop();
-});
-</script>
+        draw();
+    </script>
+</body>
+</html>
+
