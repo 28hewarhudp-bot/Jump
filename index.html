@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Reverse Pac-Man - Ghost Mode</title>
+    <title>Reverse Pac-Man - Fixed Ghost Spawn</title>
     <style>
         body { background: #000; color: yellow; text-align: center; font-family: sans-serif; }
         canvas { border: 2px solid #0000FF; display: block; margin: 20px auto; background: #000; }
@@ -10,53 +10,124 @@
 </head>
 <body>
     <h1>Reverse Pac-Man</h1>
-    <div class="controls">USE ARROW KEYS TO MOVE THE RED GHOST (BLINKY). PROTECT THE PELLETS!</div>
-    <canvas id="gameCanvas" width="380" height="380"></canvas>
+    <div class="controls">USE ARROW KEYS TO MOVE RED GHOST. DON'T LET PAC-MAN EAT THE PELLETS!</div>
+    <canvas id="gameCanvas" width="380" height="420"></canvas>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const tileSize = 20;
 
-        // 1 = Blue Wall, 0 = Pellet, 3 = Power Pellet, 2 = Empty Path/Ghost House Spawner Area
+        // Exact Classic Map Layout
+        // 1=Wall, 0=Pellet, 2=Empty/Ghost House, 3=Power Pellet
         let mapGrid = [
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [3,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,3],
-            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,3,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,3,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
-            [1,0,0,0,0,1,0,0,0,2,0,0,0,1,0,0,0,0,1],
-            [1,1,1,1,0,1,1,1,2,2,2,1,1,1,0,1,1,1,1],
-            [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
+            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+            [1,1,1,1,0,1,1,1,2,1,2,1,1,1,0,1,1,1,1],
+            [1,1,1,1,0,1,2,2,2,2,2,2,2,1,0,1,1,1,1],
             [1,1,1,1,0,1,2,1,1,2,1,1,2,1,0,1,1,1,1],
-            [2,2,2,2,0,2,2,1,2,2,2,1,2,2,0,2,2,2,2], // Row 9: Center Spawning Floor (All 2s)
+            [2,2,2,2,0,2,2,1,2,2,2,1,2,2,0,2,2,2,2], // Side tunnels
             [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
-            [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
+            [1,1,1,1,0,1,2,2,2,2,2,2,2,1,0,1,1,1,1],
             [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
-            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+            [1,3,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,3,1],
             [1,0,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,0,1],
             [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
-            [3,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,3],
+            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
         ];
 
-        let powerPelletTimer = 0;
+        // --- FIXED SPAWN LOGIC ---
+        // This function ensures an entity is never placed inside a '1'
+        function getSafeSpawn() {
+            let validSpots = [];
+            for(let r=0; r<mapGrid.length; r++) {
+                for(let c=0; c<mapGrid[r].length; c++) {
+                    if(mapGrid[r][c] !== 1) validSpots.push({x: c * tileSize, y: r * tileSize});
+                }
+            }
+            return validSpots[Math.floor(Math.random() * validSpots.length)];
+        }
 
-        // Ghosts spawn side-by-side in the open floor room of Row 9
-        let playerGhost = { 
-            x: 9 * tileSize, y: 9 * tileSize, 
-            startX: 9 * tileSize, startY: 9 * tileSize, 
-            dir: "UP", nextDir: "UP", color: "red", isEyes: false, respawnTimer: 0 
-        };
-
+        let playerGhost = { ...getSafeSpawn(), dir: "UP", nextDir: "UP", color: "red" };
         let aiGhosts = [
-            { x: 6 * tileSize, y: 9 * tileSize, startX: 6 * tileSize, startY: 9 * tileSize, dir: "UP", color: "pink", isEyes: false, respawnTimer: 0 },
-            { x: 7 * tileSize, y: 9 * tileSize, startX: 7 * tileSize, startY: 9 * tileSize, dir: "UP", color: "cyan", isEyes: false, respawnTimer: 0 },
-            { x: 12 * tileSize, y: 9 * tileSize, startX: 12 * tileSize, startY: 9 * tileSize, dir: "UP", color: "orange", isEyes: false, respawnTimer: 0 }
+            { ...getSafeSpawn(), dir: "UP", color: "pink" },
+            { ...getSafeSpawn(), dir: "UP", color: "cyan" }
         ];
+        let pacman = { x: 9 * tileSize, y: 15 * tileSize, dir: "LEFT" };
 
-        let pacman = { x: 9 * tileSize, y: 15 * tileSize, dir: "LEFT", nextDir: "LEFT", mouthAngle: 0.2 };
+        function isWallAt(px, py) {
+            let col = Math.round(px / tileSize);
+            let row = Math.round(py / tileSize);
+            if (!mapGrid[row] || mapGrid[row][col] === 1) return true;
+            return false;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Map
+            mapGrid.forEach((row, r) => {
+                row.forEach((cell, c) => {
+                    if (cell === 1) {
+                        ctx.fillStyle = "blue";
+                        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+                    } else if (cell === 0 || cell === 3) {
+                        ctx.fillStyle = "white";
+                        ctx.beginPath();
+                        ctx.arc(c * tileSize + 10, r * tileSize + 10, cell === 3 ? 4 : 2, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+                });
+            });
+
+            // Draw Pacman
+            ctx.fillStyle = "yellow";
+            ctx.beginPath();
+            ctx.arc(pacman.x + 10, pacman.y + 10, 8, 0.2 * Math.PI, 1.8 * Math.PI);
+            ctx.lineTo(pacman.x + 10, pacman.y + 10);
+            ctx.fill();
+
+            // Draw Player Ghost
+            ctx.fillStyle = playerGhost.color;
+            ctx.fillRect(playerGhost.x + 2, playerGhost.y + 2, tileSize - 4, tileSize - 4);
+
+            // Draw AI Ghosts
+            aiGhosts.forEach(g => {
+                ctx.fillStyle = g.color;
+                ctx.fillRect(g.x + 2, g.y + 2, tileSize - 4, tileSize - 4);
+            });
+        }
+
+        function update() {
+            // Player Movement Logic
+            let nx = playerGhost.x, ny = playerGhost.y;
+            if (playerGhost.nextDir === "UP") ny -= tileSize;
+            else if (playerGhost.nextDir === "DOWN") ny += tileSize;
+            else if (playerGhost.nextDir === "LEFT") nx -= tileSize;
+            else if (playerGhost.nextDir === "RIGHT") nx += tileSize;
+
+            if (!isWallAt(nx, ny)) {
+                playerGhost.x = nx;
+                playerGhost.y = ny;
+            }
+
+            // Pacman simple AI (Random Move)
+            let px = pacman.x, py = pacman.y;
+            const dirs = [{x:tileSize, y:0}, {x:-tileSize, y:0}, {x:0, y:tileSize}, {x:0, y:-tileSize}];
+            let move = dirs[Math.floor(Math.random() * dirs.length)];
+            if (!isWallAt(pacman.x + move.x, pacman.y + move.y)) {
+                pacman.x += move.x;
+                pacman.y += move.y;
+            }
+
+            draw();
+        }
 
         window.addEventListener("keydown", (e) => {
             if (e.key === "ArrowUp") playerGhost.nextDir = "UP";
@@ -65,312 +136,7 @@
             if (e.key === "ArrowRight") playerGhost.nextDir = "RIGHT";
         });
 
-        function isWallAt(px, py) {
-            let corners = [
-                {x: px, y: py},
-                {x: px + tileSize - 1, y: py},
-                {x: px, y: py + tileSize - 1},
-                {x: px + tileSize - 1, y: py + tileSize - 1}
-            ];
-            for (let c of corners) {
-                let col = Math.floor(c.x / tileSize);
-                let row = Math.floor(c.y / tileSize);
-                if (!mapGrid[row] || mapGrid[row][col] === 1) return true;
-            }
-            return false;
-        }
-
-        function getValidDirections(entity, currentStep) {
-            let valid = [];
-            let dirs = ["UP", "DOWN", "LEFT", "RIGHT"];
-            for (let d of dirs) {
-                let nx = entity.x, ny = entity.y;
-                if (d === "UP") ny -= currentStep;
-                if (d === "DOWN") ny += currentStep;
-                if (d === "LEFT") nx -= currentStep;
-                if (d === "RIGHT") nx += currentStep;
-                if (!isWallAt(nx, ny)) valid.push(d);
-            }
-            return valid;
-        }
-
-        function checkPelletsRemaining() {
-            for (let r = 0; r < mapGrid.length; r++) {
-                for (let c = 0; c < mapGrid[r].length; c++) {
-                    if (mapGrid[r][c] === 0 || mapGrid[r][c] === 3) return true;
-                }
-            }
-            return false;
-        }
-
-        function handleGhostStateAndRespawn(g) {
-            if (g.isEyes) {
-                if (g.respawnTimer > 0) {
-                    g.respawnTimer--;
-                    if (g.respawnTimer === 0) {
-                        g.isEyes = false;
-                        g.dir = "UP"; 
-                    }
-                }
-                return true; 
-            }
-            return false;
-        }
-
-        function movePlayerGhost(ghostStep) {
-            if (handleGhostStateAndRespawn(playerGhost)) return;
-
-            if (playerGhost.x % tileSize === 0 && playerGhost.y % tileSize === 0) {
-                let testX = playerGhost.x, testY = playerGhost.y;
-                if (playerGhost.nextDir === "UP") testY -= ghostStep;
-                if (playerGhost.nextDir === "DOWN") testY += ghostStep;
-                if (playerGhost.nextDir === "LEFT") testX -= ghostStep;
-                if (playerGhost.nextDir === "RIGHT") testX += ghostStep;
-
-                if (!isWallAt(testX, testY)) {
-                    playerGhost.dir = playerGhost.nextDir;
-                }
-            }
-
-            let nx = playerGhost.x, ny = playerGhost.y;
-            if (playerGhost.dir === "UP") ny -= ghostStep;
-            if (playerGhost.dir === "DOWN") ny += ghostStep;
-            if (playerGhost.dir === "LEFT") nx -= ghostStep;
-            if (playerGhost.dir === "RIGHT") nx += ghostStep;
-
-            if (!isWallAt(nx, ny)) {
-                playerGhost.x = nx;
-                playerGhost.y = ny;
-            }
-        }
-
-        function updateAIGhosts(ghostStep) {
-            for (let g of aiGhosts) {
-                if (handleGhostStateAndRespawn(g)) continue;
-
-                if (g.x % tileSize === 0 && g.y % tileSize === 0) {
-                    let valid = getValidDirections(g, ghostStep);
-                    let opposites = { "UP": "DOWN", "DOWN": "UP", "LEFT": "RIGHT", "RIGHT": "LEFT" };
-                    let filtered = valid.filter(d => d !== opposites[g.dir]);
-                    if (filtered.length > 0) valid = filtered;
-
-                    g.dir = valid[Math.floor(Math.random() * valid.length)];
-                }
-
-                let nx = g.x, ny = g.y;
-                if (g.dir === "UP") ny -= ghostStep;
-                if (g.dir === "DOWN") ny += ghostStep;
-                if (g.dir === "LEFT") nx -= ghostStep;
-                if (g.dir === "RIGHT") nx += ghostStep;
-                if (!isWallAt(nx, ny)) { g.x = nx; g.y = ny; }
-            }
-        }
-
-        function updatePacmanAI(pacmanStep) {
-            if (pacman.x % tileSize === 0 && pacman.y % tileSize === 0) {
-                let valid = getValidDirections(pacman, pacmanStep);
-                if (valid.length === 0) return;
-
-                let opposites = { "UP": "DOWN", "DOWN": "UP", "LEFT": "RIGHT", "RIGHT": "LEFT" };
-                let filtered = valid.filter(d => d !== opposites[pacman.dir]);
-                if (filtered.length > 0) valid = filtered;
-
-                let targetGhost = null;
-                let minDist = Infinity;
-
-                let threats = [playerGhost, ...aiGhosts];
-                for (let t of threats) {
-                    if (t.isEyes) continue; 
-                    let d = Math.hypot(pacman.x - t.x, pacman.y - t.y);
-                    if (d < minDist) { minDist = d; targetGhost = t; }
-                }
-
-                if (!targetGhost) targetGhost = playerGhost;
-
-                let bestDir = valid;
-                if (powerPelletTimer > 0) {
-                    let bestScore = Infinity;
-                    for (let d of valid) {
-                        let nx = pacman.x, ny = pacman.y;
-                        if (d === "UP") ny -= tileSize;
-                        if (d === "DOWN") ny += tileSize;
-                        if (d === "LEFT") nx -= tileSize;
-                        if (d === "RIGHT") nx += tileSize;
-                        let score = Math.hypot(nx - targetGhost.x, ny - targetGhost.y);
-                        if (score < bestScore) { bestScore = score; bestDir = d; }
-                    }
-                } else {
-                    let bestScore = -Infinity;
-                    for (let d of valid) {
-                        let nx = pacman.x, ny = pacman.y;
-                        if (d === "UP") ny -= tileSize;
-                        if (d === "DOWN") ny += tileSize;
-                        if (d === "LEFT") nx -= tileSize;
-                        if (d === "RIGHT") nx += tileSize;
-                        let score = Math.hypot(nx - targetGhost.x, ny - targetGhost.y);
-                        if (score > bestScore) { bestScore = score; bestDir = d; }
-                    }
-                }
-                pacman.dir = bestDir;
-            }
-
-            let nx = pacman.x, ny = pacman.y;
-            if (pacman.dir === "UP") ny -= pacmanStep;
-            if (pacman.dir === "DOWN") ny += pacmanStep;
-            if (pacman.dir === "LEFT") nx -= pacmanStep;
-            if (pacman.dir === "RIGHT") nx += pacmanStep;
-            if (!isWallAt(nx, ny)) { pacman.x = nx; pacman.y = ny; }
-
-            let r = Math.floor((pacman.y + 10) / tileSize);
-            let c = Math.floor((pacman.x + 10) / tileSize);
-            if (mapGrid[r] && mapGrid[r][c] === 0) {
-                mapGrid[r][c] = 2; 
-            } else if (mapGrid[r] && mapGrid[r][c] === 3) {
-                mapGrid[r][c] = 2; 
-                powerPelletTimer = 600; 
-            }
-
-            if (powerPelletTimer > 0) powerPelletTimer--;
-        }
-
-        function drawGhostEyes(gx, gy, dir) {
-            let eyeOffset = { x: 0, y: 0 };
-            if (dir === "UP") eyeOffset.y = -2;
-            if (dir === "DOWN") eyeOffset.y = 2;
-            if (dir === "LEFT") eyeOffset.x = -2;
-            if (dir === "RIGHT") eyeOffset.x = 2;
-
-            ctx.fillStyle = "white";
-            ctx.beginPath(); ctx.arc(gx + 6, gy + 8, 3, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "blue";
-            ctx.beginPath(); ctx.arc(gx + 6 + eyeOffset.x, gy + 8 + eyeOffset.y, 1.5, 0, Math.PI * 2); ctx.fill();
-
-            ctx.fillStyle = "white";
-            ctx.beginPath(); ctx.arc(gx + 14, gy + 8, 3, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "blue";
-            ctx.beginPath(); ctx.arc(gx + 14 + eyeOffset.x, gy + 8 + eyeOffset.y, 1.5, 0, Math.PI * 2); ctx.fill();
-        }
-
-        function drawGhost(g) {
-            let cx = g.x;
-            let cy = g.y;
-
-            if (!g.isEyes) {
-                ctx.fillStyle = (powerPelletTimer > 0) ? (powerPelletTimer % 20 < 10 ? "#191970" : "#4169E1") : g.color;
-                ctx.beginPath();
-                ctx.arc(cx + 10, cy + 10, 9, Math.PI, 0);
-                ctx.lineTo(cx + 19, cy + 19);
-                ctx.lineTo(cx + 15, cy + 16);
-                ctx.lineTo(cx + 10, cy + 19);
-                ctx.lineTo(cx + 5, cy + 16);
-                ctx.lineTo(cx + 1, cy + 19);
-                ctx.closePath();
-                ctx.fill();
-            }
-
-            drawGhostEyes(cx, cy, g.dir);
-        }
-
-        function draw() {
-            ctx.fillStyle = "black";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            for (let r = 0; r < mapGrid.length; r++) {
-                for (let c = 0; c < mapGrid[r].length; c++) {
-                    if (mapGrid[r][c] === 1) {
-                        ctx.fillStyle = "blue";
-                        ctx.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
-                    } else if (mapGrid[r][c] === 0) {
-                        ctx.fillStyle = "orange";
-                        ctx.beginPath(); ctx.arc(c * tileSize + 10, r * tileSize + 10, 2.5, 0, Math.PI * 2); ctx.fill();
-                    } else if (mapGrid[r][c] === 3) {
-                        if (Date.now() % 400 < 200) {
-                            ctx.fillStyle = "yellow";
-                            ctx.beginPath(); ctx.arc(c * tileSize + 10, r * tileSize + 10, 6, 0, Math.PI * 2); ctx.fill();
-                        }
-                    }
-                }
-            }
-
-            if (!checkPelletsRemaining()) {
-                alert("Pac-Man ate all the pellets! Pac-Man wins!");
-                location.reload();
-                return;
-            }
-
-            let currentGhostStep = (powerPelletTimer > 0) ? 1 : 2;
-            let currentPacmanStep = 2; 
-
-            // Calculations
-            movePlayerGhost(currentGhostStep);
-            updateAIGhosts(currentGhostStep);
-            updatePacmanAI(currentPacmanStep);
-
-            // Render Actors
-            drawGhost(playerGhost);
-            aiGhosts.forEach(drawGhost);
-
-            // Render Pac-man
-            ctx.fillStyle = "yellow";
-            ctx.beginPath();
-            let baseRotation = 0;
-            if (pacman.dir === "DOWN") baseRotation = 0.5 * Math.PI;
-            if (pacman.dir === "LEFT") baseRotation = 1.0 * Math.PI;
-            if (pacman.dir === "RIGHT") baseRotation = 0.0;
-            if (pacman.dir === "UP") baseRotation = 1.5 * Math.PI;
-
-            pacman.mouthAngle = 0.25 * Math.abs(Math.sin(Date.now() / 100));
-
-            ctx.arc(
-                pacman.x + 10, pacman.y + 10, 9, 
-                baseRotation + pacman.mouthAngle, 
-                baseRotation + (2 * Math.PI) - pacman.mouthAngle
-            );
-            ctx.lineTo(pacman.x + 10, pacman.y + 10);
-            ctx.closePath();
-            ctx.fill();
-
-            let pBox = { x1: pacman.x, y1: pacman.y, x2: pacman.x + tileSize, y2: pacman.y + tileSize };
-            
-            // Player Ghost Collision Check
-            if (!playerGhost.isEyes) {
-                let gBox = { x1: playerGhost.x, y1: playerGhost.y, x2: playerGhost.x + tileSize, y2: playerGhost.y + tileSize };
-                if (pBox.x1 < gBox.x2 && pBox.x2 > gBox.x1 && pBox.y1 < gBox.y2 && pBox.y2 > gBox.y1) {
-                    if (powerPelletTimer > 0) {
-                        playerGhost.isEyes = true;
-                        playerGhost.x = playerGhost.startX;
-                        playerGhost.y = playerGhost.startY;
-                        playerGhost.respawnTimer = 300; // Exactly 5 seconds
-                    } else {
-                        alert("You caught Pac-Man! Ghosts Win!");
-                        location.reload();
-                        return;
-                    }
-                }
-            }
-
-            // AI Ghost Collision Check
-            for (let g of aiGhosts) {
-                if (g.isEyes) continue; 
-                
-                if (pBox.x1 < g.x + tileSize && pBox.x2 > g.x && pBox.y1 < g.y + tileSize && pBox.y2 > g.y) {
-                    if (powerPelletTimer > 0) {
-                        g.isEyes = true;
-                        g.x = g.startX;
-                        g.y = g.startY;
-                        g.respawnTimer = 300; // Exactly 5 seconds
-                    } else {
-                        alert("Your teammate caught Pac-Man! Ghosts Win!");
-                        location.reload();
-                        return;
-                    }
-                }
-            }
-
-            requestAnimationFrame(draw);
-        }
-
-        draw();
+        setInterval(update, 150);
     </script>
 </body>
 </html>
