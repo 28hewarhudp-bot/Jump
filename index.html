@@ -1,166 +1,135 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Ghost vs Pacman</title>
+<title>Ghost vs Pac-Man</title>
 <style>
 body { background:black; margin:0; text-align:center; }
-#pacman { margin:20px auto; }
 h1 { color:yellow; font-family:sans-serif; }
+canvas { background:#000; margin-top:10px; }
 </style>
 </head>
 <body>
 
-<h1>You are the Ghost — Catch Pac-Man!</h1>
-<div id="pacman"></div>
+<h1>You are the Ghost — Catch Pac-Man</h1>
+<p style="color:white">Use ARROW KEYS to move</p>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+<canvas id="game" width="400" height="400"></canvas>
 
 <script>
 
-var LEFT=2, RIGHT=11, UP=3, DOWN=1, NONE=4;
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-var Pacman = {};
+const SIZE = 20;
 
-// ---------------- MAP ----------------
-Pacman.MAP = [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-[0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,0],
-[0,1,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0],
-[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]];
-
-Pacman.WALL=0;
-Pacman.BISCUIT=1;
-Pacman.EMPTY=2;
-
-// ---------------- MAP ----------------
-Pacman.Map = function(size){
- var map = Pacman.MAP.clone();
- return {
-  blockSize:size,
-  isWallSpace:function(p){return map[p.y]&&map[p.y][p.x]===0;},
-  isFloorSpace:function(p){return map[p.y]&&map[p.y][p.x]!==0;},
-  block:function(p){return map[p.y][p.x];},
-  setBlock:function(p,v){map[p.y][p.x]=v;},
-  reset:function(){map=Pacman.MAP.clone();}
- };
-};
-
-// ---------------- GHOST (YOU) ----------------
-Pacman.PlayerGhost = function(game,map){
-
- var pos={x:10,y:10},dir=LEFT;
-
- function move(){
-  var n={x:pos.x,y:pos.y};
-
-  if(dir===LEFT)n.x--;
-  if(dir===RIGHT)n.x++;
-  if(dir===UP)n.y--;
-  if(dir===DOWN)n.y++;
-
-  if(!map.isWallSpace(n)) pos=n;
-  return pos;
- }
-
- function draw(ctx){
-  ctx.fillStyle="cyan";
-  ctx.beginPath();
-  ctx.arc(pos.x*10,pos.y*10,8,0,Math.PI*2);
-  ctx.fill();
- }
-
- function keyDown(e){
-  if(e.keyCode==37)dir=LEFT;
-  if(e.keyCode==38)dir=UP;
-  if(e.keyCode==39)dir=RIGHT;
-  if(e.keyCode==40)dir=DOWN;
- }
-
- return {move,draw,keyDown,getPos:()=>pos};
-};
-
-// ---------------- PACMAN AI ----------------
-Pacman.PacAI = function(game,map,ghost){
-
- var pos={x:5,y:5};
-
- function nearestGhost(){
-  return ghost.getPos();
- }
-
- function move(){
-
-  var g=nearestGhost();
-  var dx=pos.x-g.x;
-  var dy=pos.y-g.y;
-
-  // flee if ghost close
-  if(Math.abs(dx)+Math.abs(dy)<6){
-    pos.x += dx>0?1:-1;
-    pos.y += dy>0?1:-1;
-  } else {
-    // move toward pellets (simple scan)
-    if(Math.random()<0.5) pos.x+=Math.random()<0.5?1:-1;
-    else pos.y+=Math.random()<0.5?1:-1;
+// pellets
+let pellets = [];
+for (let i=2;i<18;i++){
+ for (let j=2;j<18;j++){
+  if (Math.random() > 0.85){
+   pellets.push({x:i,y:j});
   }
-
-  return pos;
  }
-
- function draw(ctx){
-  ctx.fillStyle="yellow";
-  ctx.beginPath();
-  ctx.arc(pos.x*10,pos.y*10,8,0,Math.PI*2);
-  ctx.fill();
- }
-
- return {move,draw,getPos:()=>pos};
-};
-
-// ---------------- GAME ----------------
-var game={tick:0};
-
-function init(){
-
- var canvas=document.createElement("canvas");
- canvas.width=400;
- canvas.height=400;
- document.getElementById("pacman").appendChild(canvas);
- var ctx=canvas.getContext("2d");
-
- var map=new Pacman.Map(10);
- var ghost=new Pacman.PlayerGhost(game,map);
- var pacman=new Pacman.PacAI(game,map,ghost);
-
- document.addEventListener("keydown",e=>ghost.keyDown(e));
-
- function loop(){
-  ctx.clearRect(0,0,400,400);
-
-  ghost.move();
-  pacman.move();
-
-  ghost.draw(ctx);
-  pacman.draw(ctx);
-
-  var g=ghost.getPos();
-  var p=pacman.getPos();
-
-  if(Math.abs(g.x-p.x)<1 && Math.abs(g.y-p.y)<1){
-    ctx.fillStyle="white";
-    ctx.fillText("YOU CAUGHT PACMAN!",150,200);
-  }
-
-  requestAnimationFrame(loop);
- }
-
- loop();
 }
 
-init();
+// player ghost (YOU)
+let ghost = {x:1,y:1};
 
-Object.prototype.clone=function(){return JSON.parse(JSON.stringify(this));};
+// pacman AI
+let pac = {x:15,y:15};
+
+let dir = {x:0,y:0};
+
+document.addEventListener("keydown",e=>{
+ if(e.key=="ArrowLeft")dir={x:-1,y:0};
+ if(e.key=="ArrowRight")dir={x:1,y:0};
+ if(e.key=="ArrowUp")dir={x:0,y:-1};
+ if(e.key=="ArrowDown")dir={x:0,y:1};
+});
+
+// check distance
+function dist(a,b){
+ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+}
+
+// update pacman AI
+function updatePac(){
+ let d = dist(pac,ghost);
+
+ if(d < 4){
+  // RUN AWAY
+  pac.x += (pac.x < ghost.x) ? -1 : 1;
+  pac.y += (pac.y < ghost.y) ? -1 : 1;
+ } else {
+  // GO TO PELLET
+  if(pellets.length > 0){
+   let p = pellets[0];
+   pac.x += (pac.x < p.x) ? 1 : -1;
+   pac.y += (pac.y < p.y) ? 1 : -1;
+  }
+ }
+}
+
+// update ghost
+function updateGhost(){
+ ghost.x += dir.x;
+ ghost.y += dir.y;
+
+ ghost.x = Math.max(0,Math.min(19,ghost.x));
+ ghost.y = Math.max(0,Math.min(19,ghost.y));
+}
+
+// eat pellets
+function eat(){
+ pellets = pellets.filter(p=>{
+  return !(p.x==pac.x && p.y==pac.y);
+ });
+}
+
+// draw everything
+function draw(){
+
+ ctx.fillStyle="black";
+ ctx.fillRect(0,0,400,400);
+
+ // pellets
+ ctx.fillStyle="white";
+ for(let p of pellets){
+  ctx.fillRect(p.x*20,p.y*20,5,5);
+ }
+
+ // ghost (YOU)
+ ctx.fillStyle="cyan";
+ ctx.beginPath();
+ ctx.arc(ghost.x*20,ghost.y*20,8,0,Math.PI*2);
+ ctx.fill();
+
+ // pacman AI
+ ctx.fillStyle="yellow";
+ ctx.beginPath();
+ ctx.arc(pac.x*20,pac.y*20,8,0,Math.PI*2);
+ ctx.fill();
+
+ // win check
+ if(dist(ghost,pac)<1){
+  ctx.fillStyle="white";
+  ctx.font="20px Arial";
+  ctx.fillText("YOU CAUGHT PAC-MAN!",80,200);
+ }
+}
+
+// loop
+function loop(){
+ updateGhost();
+ updatePac();
+ eat();
+ draw();
+ requestAnimationFrame(loop);
+}
+
+loop();
 
 </script>
+
 </body>
 </html>
