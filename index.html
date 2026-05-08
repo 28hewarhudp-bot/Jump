@@ -18,21 +18,21 @@
         const ctx = canvas.getContext("2d");
         const tileSize = 20;
 
-        // 1 = Wall, 0 = Pellet, 3 = Power Pellet, 2 = Empty Spawning Room
+        // 1 = Blue Wall, 0 = Pellet, 3 = Power Pellet, 2 = Empty Path/Ghost House Spawner Area
         let mapGrid = [
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
             [3,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,3],
             [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
-            [1,0,0,0,0,1,0,0,0,2,0,0,0,1,0,0,0,0,1], // Opening above the ghost house
-            [1,1,1,1,0,1,1,1,2,2,2,1,1,1,0,1,1,1,1], 
+            [1,0,0,0,0,1,0,0,0,2,0,0,0,1,0,0,0,0,1],
+            [1,1,1,1,0,1,1,1,2,2,2,1,1,1,0,1,1,1,1],
             [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
             [1,1,1,1,0,1,2,1,1,2,1,1,2,1,0,1,1,1,1],
-            [1,2,2,2,0,2,2,1,2,2,2,1,2,2,0,2,2,2,1], // Open safe area for Ghost House (Rows 8, 9, 10 modified)
+            [2,2,2,2,0,2,2,1,2,2,2,1,2,2,0,2,2,2,2], // Row 9: Center Spawning Floor (All 2s)
             [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
             [2,2,2,1,0,1,2,2,2,2,2,2,2,1,0,1,2,2,2],
-            [1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,1,1,1],
+            [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
             [1,0,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,0,1],
@@ -43,7 +43,7 @@
 
         let powerPelletTimer = 0;
 
-        // Clean initial coordinate map assignments inside the newly cleared ghost house area
+        // Ghosts spawn side-by-side in the open floor room of Row 9
         let playerGhost = { 
             x: 9 * tileSize, y: 9 * tileSize, 
             startX: 9 * tileSize, startY: 9 * tileSize, 
@@ -51,9 +51,9 @@
         };
 
         let aiGhosts = [
-            { x: 7 * tileSize, y: 9 * tileSize, startX: 7 * tileSize, startY: 9 * tileSize, dir: "UP", color: "pink", isEyes: false, respawnTimer: 0 },
-            { x: 8 * tileSize, y: 9 * tileSize, startX: 8 * tileSize, startY: 9 * tileSize, dir: "UP", color: "cyan", isEyes: false, respawnTimer: 0 },
-            { x: 11 * tileSize, y: 9 * tileSize, startX: 11 * tileSize, startY: 9 * tileSize, dir: "UP", color: "orange", isEyes: false, respawnTimer: 0 }
+            { x: 6 * tileSize, y: 9 * tileSize, startX: 6 * tileSize, startY: 9 * tileSize, dir: "UP", color: "pink", isEyes: false, respawnTimer: 0 },
+            { x: 7 * tileSize, y: 9 * tileSize, startX: 7 * tileSize, startY: 9 * tileSize, dir: "UP", color: "cyan", isEyes: false, respawnTimer: 0 },
+            { x: 12 * tileSize, y: 9 * tileSize, startX: 12 * tileSize, startY: 9 * tileSize, dir: "UP", color: "orange", isEyes: false, respawnTimer: 0 }
         ];
 
         let pacman = { x: 9 * tileSize, y: 15 * tileSize, dir: "LEFT", nextDir: "LEFT", mouthAngle: 0.2 };
@@ -109,7 +109,7 @@
                     g.respawnTimer--;
                     if (g.respawnTimer === 0) {
                         g.isEyes = false;
-                        g.dir = "UP"; // Forces them to start moving up out of the house layout room
+                        g.dir = "UP"; 
                     }
                 }
                 return true; 
@@ -340,7 +340,7 @@
                         playerGhost.isEyes = true;
                         playerGhost.x = playerGhost.startX;
                         playerGhost.y = playerGhost.startY;
-                        playerGhost.respawnTimer = 300; // Exactly 5 seconds at 60 FPS
+                        playerGhost.respawnTimer = 300; // Exactly 5 seconds
                     } else {
                         alert("You caught Pac-Man! Ghosts Win!");
                         location.reload();
@@ -358,7 +358,7 @@
                         g.isEyes = true;
                         g.x = g.startX;
                         g.y = g.startY;
-                        g.respawnTimer = 300; // Exactly 5 seconds at 60 FPS for AI as well
+                        g.respawnTimer = 300; // Exactly 5 seconds
                     } else {
                         alert("Your teammate caught Pac-Man! Ghosts Win!");
                         location.reload();
