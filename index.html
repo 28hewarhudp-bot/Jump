@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Ghosts vs Pac-Man</title>
+<title>FULL Pac-Man AI System</title>
 <style>
-body { background:black; margin:0; text-align:center; }
-canvas { margin-top:10px; background:black; }
+body { margin:0; background:black; text-align:center; }
+canvas { background:black; margin-top:10px; }
 h1 { color:yellow; font-family:sans-serif; }
 </style>
 </head>
 <body>
 
-<h1>You are the Ghost — Catch Pac-Man</h1>
-<p style="color:white">Arrow keys to move</p>
+<h1>FULL Pac-Man Arcade AI</h1>
+<p style="color:white">You are the CYAN GHOST — Arrow keys</p>
 
 <canvas id="c" width="420" height="420"></canvas>
 
@@ -20,32 +20,37 @@ h1 { color:yellow; font-family:sans-serif; }
 const ctx = document.getElementById("c").getContext("2d");
 const S = 20;
 
-// ===== MAZE (0 wall, 1 pellet, 2 empty) =====
-let maze = [
-[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-[0,1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0],
-[0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0,1,0],
-[0,1,0,1,0,0,0,1,0,1,0,0,0,0,0,0,1,1,0,1,0],
-[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-[0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
-[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+// ================= MAZE =================
+let map = [
+[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+[0,1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1,0],
+[0,1,0,4,1,1,1,1,0,1,1,1,1,1,1,4,0,1,1,0],
+[0,1,0,1,0,0,0,1,0,1,0,0,0,0,1,0,0,1,0,0],
+[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+[0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
+[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 ];
 
-// ===== ENTITIES =====
-let ghost = {x:1,y:1}; // YOU
-let pac = {x:18,y:7};  // AI PACMAN
+// ================= ENTITIES =================
+let player = {x:1,y:1}; // YOU
+
+let pacman = {x:18,y:6};
 
 let ghosts = [
- {x:10,y:1,color:"red"},
- {x:10,y:7,color:"pink"},
- {x:1,y:7,color:"orange"}
+ {x:10,y:1,name:"blinky"},
+ {x:15,y:3,name:"pinky"},
+ {x:5,y:6,name:"inky"},
+ {x:1,y:6,name:"clyde"}
 ];
 
 let dir = {x:0,y:0};
 
-// ===== INPUT =====
+let power = false;
+let powerTime = 0;
+
+// ================= INPUT =================
 document.addEventListener("keydown",e=>{
  if(e.key==="ArrowLeft")dir={x:-1,y:0};
  if(e.key==="ArrowRight")dir={x:1,y:0};
@@ -53,128 +58,179 @@ document.addEventListener("keydown",e=>{
  if(e.key==="ArrowDown")dir={x:0,y:1};
 });
 
-// ===== HELPERS =====
+// ================= HELPERS =================
+function wall(x,y){
+ return map[y] && map[y][x]===0;
+}
+
 function dist(a,b){
  return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
 }
 
-function wall(x,y){
- return maze[y] && maze[y][x] === 0;
-}
-
-// ===== MOVE GHOST (YOU) =====
-function moveGhost(){
- let nx = ghost.x + dir.x;
- let ny = ghost.y + dir.y;
-
+// ================= YOU =================
+function movePlayer(){
+ let nx = player.x + dir.x;
+ let ny = player.y + dir.y;
  if(!wall(nx,ny)){
-  ghost.x = nx;
-  ghost.y = ny;
+  player.x = nx;
+  player.y = ny;
  }
 }
 
-// ===== MOVE OTHER GHOSTS =====
-function moveGhostAI(g){
- let dx = pac.x - g.x;
- let dy = pac.y - g.y;
+// ================= PACMAN BFS-LIKE TARGET =================
+function findTarget(from, values){
+ let best=null;
+ let bd=999;
 
- let nx = g.x + (dx>0?1:-1);
- let ny = g.y + (dy>0?1:-1);
-
- if(!wall(nx,ny)) g.x = nx;
- if(!wall(nx,ny)) g.y = ny;
-}
-
-// ===== PAC-MAN AI =====
-function movePac(){
-
- let danger = dist(pac,ghost) < 4;
-
- if(danger){
-  // RUN AWAY
-  pac.x += (pac.x < ghost.x) ? -1 : 1;
-  pac.y += (pac.y < ghost.y) ? -1 : 1;
- } else {
-  // SEEK PELLET
-  let target = null;
-
-  for(let y=0;y<maze.length;y++){
-   for(let x=0;x<maze[0].length;x++){
-    if(maze[y][x]===1){
-     target = {x,y};
-     break;
+ for(let y=0;y<map.length;y++){
+  for(let x=0;x<map[0].length;x++){
+   if(values.includes(map[y][x])){
+    let d = Math.abs(from.x-x)+Math.abs(from.y-y);
+    if(d<bd){
+     bd=d;
+     best={x,y};
     }
    }
-   if(target) break;
+  }
+ }
+ return best;
+}
+
+// ================= PACMAN AI =================
+function movePac(){
+
+ let danger = ghosts.some(g=>dist(g,pacman)<4);
+
+ if(power){
+  // HUNT MODE
+  let target = player;
+  for(let g of ghosts){
+   if(dist(g,pacman)<dist(target,pacman)) target=g;
   }
 
-  if(target){
-   pac.x += (pac.x < target.x) ? 1 : -1;
-   pac.y += (pac.y < target.y) ? 1 : -1;
+  pacman.x += (pacman.x < target.x)?1:-1;
+  pacman.y += (pacman.y < target.y)?1:-1;
+ }
+ else if(danger){
+  // RUN
+  let g = ghosts[0];
+  pacman.x += (pacman.x < g.x)?-1:1;
+  pacman.y += (pacman.y < g.y)?-1:1;
+ }
+ else {
+  // SEEK PELLET
+  let t = findTarget(pacman,[1,4]);
+  if(t){
+   pacman.x += (pacman.x < t.x)?1:-1;
+   pacman.y += (pacman.y < t.y)?1:-1;
   }
  }
 
- // eat pellet
- if(maze[pac.y][pac.x]===1){
-  maze[pac.y][pac.x]=2;
+ // eat
+ if(map[pacman.y][pacman.x]===1){
+  map[pacman.y][pacman.x]=2;
+ }
+
+ if(map[pacman.y][pacman.x]===4){
+  map[pacman.y][pacman.x]=2;
+  power=true;
+  powerTime=300;
  }
 }
 
-// ===== DRAW =====
+// ================= GHOST AI =================
+function moveGhost(g, i){
+
+ let speed = power ? 0.5 : 1;
+
+ if(Math.random()<speed){
+
+  let target = pacman;
+
+  if(g.name==="pinky"){
+   target = {x:pacman.x+2,y:pacman.y+2};
+  }
+  if(g.name==="clyde" && dist(g,pacman)<5){
+   target = player;
+  }
+
+  let dx = target.x - g.x;
+  let dy = target.y - g.y;
+
+  let nx = g.x + (dx>0?1:-1);
+  let ny = g.y + (dy>0?1:-1);
+
+  if(!wall(nx,ny)) g.x=nx;
+  if(!wall(nx,ny)) g.y=ny;
+ }
+}
+
+// ================= POWER =================
+function updatePower(){
+ if(power){
+  powerTime--;
+  if(powerTime<=0) power=false;
+ }
+}
+
+// ================= DRAW =================
 function draw(){
 
  ctx.fillStyle="black";
  ctx.fillRect(0,0,420,420);
 
- // maze
- for(let y=0;y<maze.length;y++){
-  for(let x=0;x<maze[0].length;x++){
+ for(let y=0;y<map.length;y++){
+  for(let x=0;x<map[0].length;x++){
 
-   if(maze[y][x]===0){
+   if(map[y][x]===0){
     ctx.fillStyle="blue";
     ctx.fillRect(x*S,y*S,S,S);
    }
 
-   if(maze[y][x]===1){
+   if(map[y][x]===1){
     ctx.fillStyle="white";
     ctx.fillRect(x*S+7,y*S+7,5,5);
+   }
+
+   if(map[y][x]===4){
+    ctx.fillStyle="orange";
+    ctx.beginPath();
+    ctx.arc(x*S,y*S,6,0,Math.PI*2);
+    ctx.fill();
    }
   }
  }
 
- // pacman
- ctx.fillStyle="yellow";
+ // PACMAN
+ ctx.fillStyle = power ? "red" : "yellow";
  ctx.beginPath();
- ctx.arc(pac.x*S,pac.y*S,8,0,Math.PI*2);
+ ctx.arc(pacman.x*S,pacman.y*S,8,0,Math.PI*2);
  ctx.fill();
 
- // player ghost
+ // PLAYER
  ctx.fillStyle="cyan";
  ctx.beginPath();
- ctx.arc(ghost.x*S,ghost.y*S,8,0,Math.PI*2);
+ ctx.arc(player.x*S,player.y*S,8,0,Math.PI*2);
  ctx.fill();
 
- // other ghosts
+ // GHOSTS
  for(let g of ghosts){
-  ctx.fillStyle=g.color;
+  ctx.fillStyle="pink";
   ctx.beginPath();
   ctx.arc(g.x*S,g.y*S,8,0,Math.PI*2);
   ctx.fill();
  }
 
- // win
- if(dist(ghost,pac)<1){
-  ctx.fillStyle="white";
-  ctx.font="20px Arial";
-  ctx.fillText("YOU CAUGHT PAC-MAN!",80,200);
- }
+ ctx.fillStyle="white";
+ ctx.fillText(power?"PAC-MAN HUNT MODE":"NORMAL MODE",10,410);
 }
 
-// ===== LOOP =====
+// ================= LOOP =================
 function loop(){
- moveGhost();
+ movePlayer();
  movePac();
- ghosts.forEach(moveGhostAI);
+ ghosts.forEach(moveGhost);
+ updatePower();
  draw();
  requestAnimationFrame(loop);
 }
