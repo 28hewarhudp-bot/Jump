@@ -9,7 +9,7 @@
 </style>
 </head>
 <body>
-<div id="hud">WASD move | Collect pellets</div>
+<div id="hud">WASD move | Yellow = pellets | Red = ghosts</div>
 <canvas id="game"></canvas>
 <script>
 const canvas = document.getElementById("game");
@@ -17,7 +17,6 @@ const ctx = canvas.getContext("2d");
 canvas.width = innerWidth;
 canvas.height = innerHeight;
 
-// BIGGER MAP
 const map = [
 [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
 [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
@@ -38,7 +37,7 @@ const keys = {};
 addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-// PELLETS
+// pellets
 let pellets = [];
 for(let y=0;y<map.length;y++){
   for(let x=0;x<map[y].length;x++){
@@ -48,11 +47,11 @@ for(let y=0;y<map.length;y++){
   }
 }
 
-// GHOSTS
+// ghosts
 let ghosts = [
-  {x:10,y:4,dir:0},
-  {x:15,y:6,dir:1},
-  {x:20,y:3,dir:2}
+  {x:10,y:4},
+  {x:15,y:6},
+  {x:20,y:3}
 ];
 
 function isWall(x,y){
@@ -60,20 +59,20 @@ function isWall(x,y){
 }
 
 function movePlayer(){
-  const speed = 0.05;
+  const speed=0.05;
 
   if(keys["w"]){
-    let nx = px + Math.cos(pa)*speed;
-    let ny = py + Math.sin(pa)*speed;
-    if(!isWall(nx,ny)){ px=nx; py=ny; }
+    let nx=px+Math.cos(pa)*speed;
+    let ny=py+Math.sin(pa)*speed;
+    if(!isWall(nx,ny)){px=nx;py=ny;}
   }
   if(keys["s"]){
-    let nx = px - Math.cos(pa)*speed;
-    let ny = py - Math.sin(pa)*speed;
-    if(!isWall(nx,ny)){ px=nx; py=ny; }
+    let nx=px-Math.cos(pa)*speed;
+    let ny=py-Math.sin(pa)*speed;
+    if(!isWall(nx,ny)){px=nx;py=ny;}
   }
-  if(keys["a"]) pa -= 0.03;
-  if(keys["d"]) pa += 0.03;
+  if(keys["a"]) pa-=0.03;
+  if(keys["d"]) pa+=0.03;
 }
 
 function moveGhosts(){
@@ -89,17 +88,41 @@ function moveGhosts(){
       g.y=ny;
     }
 
-    // chase player lightly
-    g.x += (px - g.x)*0.002;
-    g.y += (py - g.y)*0.002;
+    g.x += (px-g.x)*0.002;
+    g.y += (py-g.y)*0.002;
   }
 }
 
 function eatPellets(){
-  pellets = pellets.filter(p=>{
-    if(Math.hypot(px-p.x,py-p.y)<0.3) return false;
-    return true;
-  });
+  pellets = pellets.filter(p=>Math.hypot(px-p.x,py-p.y)>0.3);
+}
+
+function drawMinimap(){
+  const scale=6;
+  ctx.fillStyle="rgba(0,0,0,0.5)";
+  ctx.fillRect(10,10,map[0].length*scale,map.length*scale);
+
+  for(let y=0;y<map.length;y++){
+    for(let x=0;x<map[y].length;x++){
+      if(map[y][x]===1){
+        ctx.fillStyle="blue";
+        ctx.fillRect(10+x*scale,10+y*scale,scale,scale);
+      }
+    }
+  }
+
+  ctx.fillStyle="yellow";
+  for(let p of pellets){
+    ctx.fillRect(10+p.x*scale,10+p.y*scale,2,2);
+  }
+
+  ctx.fillStyle="red";
+  for(let g of ghosts){
+    ctx.fillRect(10+g.x*scale,10+g.y*scale,4,4);
+  }
+
+  ctx.fillStyle="white";
+  ctx.fillRect(10+px*scale,10+py*scale,4,4);
 }
 
 function render3D(){
@@ -110,17 +133,17 @@ function render3D(){
   const rays=140;
 
   for(let i=0;i<rays;i++){
-    const rayA=pa - fov/2 + (i/rays)*fov;
+    const rayA=pa-fov/2+(i/rays)*fov;
     let dist=0;
     let hit=false;
 
-    const eyeX=Math.cos(rayA);
-    const eyeY=Math.sin(rayA);
+    const ex=Math.cos(rayA);
+    const ey=Math.sin(rayA);
 
-    while(!hit && dist<25){
+    while(!hit&&dist<25){
       dist+=0.05;
-      let tx=px+eyeX*dist;
-      let ty=py+eyeY*dist;
+      let tx=px+ex*dist;
+      let ty=py+ey*dist;
       if(isWall(tx,ty)) hit=true;
     }
 
@@ -130,17 +153,7 @@ function render3D(){
     ctx.fillRect(i*(canvas.width/rays),canvas.height/2-h/2,canvas.width/rays+1,h);
   }
 
-  // draw pellets (2D overlay)
-  for(let p of pellets){
-    ctx.fillStyle="yellow";
-    ctx.fillRect((p.x-px+10)*5+canvas.width/2,(p.y-py+10)*5+canvas.height/2,3,3);
-  }
-
-  // draw ghosts
-  for(let g of ghosts){
-    ctx.fillStyle="red";
-    ctx.fillRect((g.x-px+10)*5+canvas.width/2,(g.y-py+10)*5+canvas.height/2,6,6);
-  }
+  drawMinimap();
 }
 
 function loop(){
