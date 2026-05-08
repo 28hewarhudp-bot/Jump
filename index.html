@@ -1,249 +1,123 @@
 extends Node2D
 
+# ---------------- PLAYER ----------------
+var player_pos := Vector2(400, 300)
+var speed := 220
+var health := 100
 
-# --------------------
-# PLAYER
-# --------------------
+var flashlight := false
+var door_closed := false
 
-var player_pos = Vector2(300,300)
-var player_speed = 200
+# ---------------- MONSTERS ----------------
+var monsters: Array = []
+var monster_speed := 95
 
-var health = 100
-var flashlight_on = false
-var door_closed = false
+# ---------------- SPAWN ----------------
+var spawn_timer := 0.0
 
-
-# --------------------
-# MONSTERS
-# --------------------
-
-var monsters = []
-
-var monster_speed = 100
-var spawn_timer = 0
-
-var hallway_limit = 500
-
-
-# --------------------
-# START
-# --------------------
 
 func _ready():
-
 	randomize()
+	spawn_monster()
+	spawn_monster()
 
-	for i in range(2):
-		spawn_monster()
-
-
-
-# --------------------
-# GAME LOOP
-# --------------------
 
 func _process(delta):
 
-	move_player(delta)
-
-	update_monsters(delta)
-
-	check_danger()
+	handle_input(delta)
+	move_monsters(delta)
+	check_collisions()
 
 	spawn_timer += delta
-
-	if spawn_timer > 8:
-
+	if spawn_timer > 5.0:
 		spawn_timer = 0
-
 		spawn_monster()
 
 	queue_redraw()
 
 
+# ---------------- INPUT ----------------
+func handle_input(delta):
 
-# --------------------
-# INPUT
-# --------------------
+	var dir := Vector2.ZERO
+
+	if Input.is_action_pressed("move_up"):
+		dir.y -= 1
+	if Input.is_action_pressed("move_down"):
+		dir.y += 1
+	if Input.is_action_pressed("move_left"):
+		dir.x -= 1
+	if Input.is_action_pressed("move_right"):
+		dir.x += 1
+
+	if dir != Vector2.ZERO:
+		dir = dir.normalized()
+
+	player_pos += dir * speed * delta
+
 
 func _input(event):
 
 	if event.is_action_pressed("flashlight"):
-
-		flashlight_on = !flashlight_on
-
-		print("Flashlight:", flashlight_on)
-
+		flashlight = !flashlight
 
 	if event.is_action_pressed("door"):
-
 		door_closed = !door_closed
 
-		print("Door:", door_closed)
 
-
-
-# --------------------
-# PLAYER MOVEMENT
-# --------------------
-
-func move_player(delta):
-
-	var direction = Vector2.ZERO
-
-
-	if Input.is_action_pressed("move_up"):
-		direction.y -= 1
-
-	if Input.is_action_pressed("move_down"):
-		direction.y += 1
-
-	if Input.is_action_pressed("move_left"):
-		direction.x -= 1
-
-	if Input.is_action_pressed("move_right"):
-		direction.x += 1
-
-
-	if direction.length() > 0:
-		direction = direction.normalized()
-
-
-	player_pos += direction * player_speed * delta
-
-
-
-# --------------------
-# MONSTERS
-# --------------------
-
+# ---------------- MONSTERS ----------------
 func spawn_monster():
 
-	var pos = Vector2(
-
-		randi_range(600,900),
-		randi_range(100,500)
-
+	var m = Vector2(
+		randi_range(650, 900),
+		randi_range(100, 500)
 	)
 
-	monsters.append(pos)
+	monsters.append(m)
 
 
-
-func update_monsters(delta):
+func move_monsters(delta):
 
 	for i in range(monsters.size()):
 
-		var direction = (
-			player_pos - monsters[i]
-		).normalized()
-
-		monsters[i] += direction * monster_speed * delta
+		var dir = (player_pos - monsters[i]).normalized()
+		monsters[i] += dir * monster_speed * delta
 
 
+# ---------------- DAMAGE ----------------
+func check_collisions():
 
-# --------------------
-# DAMAGE
-# --------------------
+	for m in monsters:
 
-func check_danger():
-
-	for monster in monsters:
-
-		var distance = monster.distance_to(
-			player_pos
-		)
-
-
-		if distance < 40:
+		if m.distance_to(player_pos) < 35:
 
 			if not door_closed:
-
 				health -= 1
 
-				jumpscare()
+				if health <= 0:
+					get_tree().reload_current_scene()
 
 
-		if health <= 0:
-
-			game_over()
-
-
-
-# --------------------
-# GAME OVER
-# --------------------
-
-func game_over():
-
-	print("GAME OVER")
-
-	get_tree().reload_current_scene()
-
-
-
-# --------------------
-# JUMPSCARE
-# --------------------
-
-func jumpscare():
-
-	print("!!! MONSTER !!!")
-
-
-
-# --------------------
-# GRAPHICS
-# --------------------
-
+# ---------------- DRAW EVERYTHING ----------------
 func _draw():
 
 	# room
-	draw_rect(
-		Rect2(0,0,1000,600),
-		Color(0.1,0.1,0.15)
-	)
+	draw_rect(Rect2(0,0,1000,600), Color(0.08,0.08,0.12))
 
-
-	# hallway
-	draw_rect(
-		Rect2(500,0,500,600),
-		Color(0.05,0.05,0.05)
-	)
-
+	# hallway (danger zone)
+	draw_rect(Rect2(500,0,500,600), Color(0.02,0.02,0.02))
 
 	# door
 	if door_closed:
+		draw_rect(Rect2(480,250,40,100), Color(0.6,0.2,0.1))
 
-		draw_rect(
-			Rect2(460,250,40,100),
-			Color(0.5,0.2,0.1)
-		)
-
-
-	# flashlight glow
-	if flashlight_on:
-
-		draw_circle(
-			player_pos,
-			120,
-			Color(1,1,0.7,0.3)
-		)
-
-
-	# player (kid)
-	draw_circle(
-		player_pos,
-		16,
-		Color(0.3,0.7,1)
-	)
-
+	# player
+	draw_circle(player_pos, 15, Color(0.3,0.7,1))
 
 	# monsters
-	for monster in monsters:
+	for m in monsters:
+		draw_circle(m, 18, Color(1,0,0))
 
-		draw_circle(
-			monster,
-			20,
-			Color(1,0,0)
-		)
+	# flashlight glow
+	if flashlight:
+		draw_circle(player_pos, 120, Color(1,1,0.6,0.25))
