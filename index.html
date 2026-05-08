@@ -1,154 +1,166 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8" />
-<title>Ghost vs AI Pacman (BIG VISIBILITY FIX)</title>
+<title>Ghost vs Pacman</title>
 <style>
-  body { margin:0; overflow:hidden; background:black; }
-  #hud { position:absolute; top:10px; left:10px; color:white; font-family:sans-serif; }
+body { background:black; margin:0; text-align:center; }
+#pacman { margin:20px auto; }
+h1 { color:yellow; font-family:sans-serif; }
 </style>
 </head>
 <body>
-<div id="hud">YOU = GHOST 👻 | BIG PACMAN + BIG PELLETS FIX</div>
-<canvas id="game"></canvas>
+
+<h1>You are the Ghost — Catch Pac-Man!</h1>
+<div id="pacman"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+
 <script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
-canvas.width=innerWidth;
-canvas.height=innerHeight;
 
-const map=[
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-[1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1],
-[1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,1],
-[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1],
-[1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1],
-[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-];
+var LEFT=2, RIGHT=11, UP=3, DOWN=1, NONE=4;
 
-let gx=2,gy=2,ga=0;
-let px=20,py=6;
+var Pacman = {};
 
-const keys={};
-addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
-addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+// ---------------- MAP ----------------
+Pacman.MAP = [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+[0,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,0],
+[0,1,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,1,0],
+[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]];
 
-let pellets=[];
-for(let y=0;y<map.length;y++){
-  for(let x=0;x<map[y].length;x++){
-    if(map[y][x]==0) pellets.push({x,y});
-  }
-}
+Pacman.WALL=0;
+Pacman.BISCUIT=1;
+Pacman.EMPTY=2;
 
-function isWall(x,y){
-  return map[Math.floor(y)]?.[Math.floor(x)]===1;
-}
+// ---------------- MAP ----------------
+Pacman.Map = function(size){
+ var map = Pacman.MAP.clone();
+ return {
+  blockSize:size,
+  isWallSpace:function(p){return map[p.y]&&map[p.y][p.x]===0;},
+  isFloorSpace:function(p){return map[p.y]&&map[p.y][p.x]!==0;},
+  block:function(p){return map[p.y][p.x];},
+  setBlock:function(p,v){map[p.y][p.x]=v;},
+  reset:function(){map=Pacman.MAP.clone();}
+ };
+};
 
-// GHOST CONTROL (YOU)
-function moveGhostPlayer(){
-  const s=0.06;
-  if(keys["w"]){let nx=gx+Math.cos(ga)*s,ny=gy+Math.sin(ga)*s;if(!isWall(nx,ny)){gx=nx;gy=ny;}}
-  if(keys["s"]){let nx=gx-Math.cos(ga)*s,ny=gy-Math.sin(ga)*s;if(!isWall(nx,ny)){gx=nx;gy=ny;}}
-  if(keys["a"])ga-=0.04;
-  if(keys["d"])ga+=0.04;
-}
+// ---------------- GHOST (YOU) ----------------
+Pacman.PlayerGhost = function(game,map){
 
-// AI PACMAN
-function movePacmanAI(){
-  let target = pellets[0];
-  if(!target) return;
+ var pos={x:10,y:10},dir=LEFT;
 
-  let dx=target.x-px;
-  let dy=target.y-py;
+ function move(){
+  var n={x:pos.x,y:pos.y};
 
-  let sp=0.05;
-  if(!isWall(px+Math.sign(dx)*sp,py)) px+=Math.sign(dx)*sp;
-  if(!isWall(px,py+Math.sign(dy)*sp)) py+=Math.sign(dy)*sp;
-}
+  if(dir===LEFT)n.x--;
+  if(dir===RIGHT)n.x++;
+  if(dir===UP)n.y--;
+  if(dir===DOWN)n.y++;
 
-function eatPellets(){
-  pellets=pellets.filter(p=>Math.hypot(px-p.x,py-p.y)>0.35);
-}
+  if(!map.isWallSpace(n)) pos=n;
+  return pos;
+ }
 
-function render(){
-  ctx.fillStyle="black";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+ function draw(ctx){
+  ctx.fillStyle="cyan";
+  ctx.beginPath();
+  ctx.arc(pos.x*10,pos.y*10,8,0,Math.PI*2);
+  ctx.fill();
+ }
 
-  const fov=Math.PI/3;
-  const rays=120;
+ function keyDown(e){
+  if(e.keyCode==37)dir=LEFT;
+  if(e.keyCode==38)dir=UP;
+  if(e.keyCode==39)dir=RIGHT;
+  if(e.keyCode==40)dir=DOWN;
+ }
 
-  for(let i=0;i<rays;i++){
-    const ra=ga-fov/2+(i/rays)*fov;
-    let dist=0,hit=false;
-    const ex=Math.cos(ra);
-    const ey=Math.sin(ra);
+ return {move,draw,keyDown,getPos:()=>pos};
+};
 
-    while(!hit&&dist<25){
-      dist+=0.05;
-      let tx=gx+ex*dist;
-      let ty=gy+ey*dist;
-      if(isWall(tx,ty))hit=true;
-    }
+// ---------------- PACMAN AI ----------------
+Pacman.PacAI = function(game,map,ghost){
 
-    const h=(canvas.height/dist)*0.85;
-    ctx.fillStyle=`rgb(0,0,${255-dist*10})`;
-    ctx.fillRect(i*(canvas.width/rays),canvas.height/2-h/2,canvas.width/rays+1,h);
-  }
+ var pos={x:5,y:5};
 
-  drawSprites();
-}
+ function nearestGhost(){
+  return ghost.getPos();
+ }
 
-// BIG VISIBILITY FIX HERE
-function drawSprites(){
-  let objs=[];
+ function move(){
 
-  // BIG PELLETS
-  for(let p of pellets){
-    objs.push({x:p.x,y:p.y,c:"yellow",s:10});
+  var g=nearestGhost();
+  var dx=pos.x-g.x;
+  var dy=pos.y-g.y;
+
+  // flee if ghost close
+  if(Math.abs(dx)+Math.abs(dy)<6){
+    pos.x += dx>0?1:-1;
+    pos.y += dy>0?1:-1;
+  } else {
+    // move toward pellets (simple scan)
+    if(Math.random()<0.5) pos.x+=Math.random()<0.5?1:-1;
+    else pos.y+=Math.random()<0.5?1:-1;
   }
 
-  // BIG PACMAN
-  objs.push({x:px,y:py,c:"yellow",s:26});
+  return pos;
+ }
 
-  // BIG GHOST (YOU)
-  objs.push({x:gx,y:gy,c:"red",s:30});
+ function draw(ctx){
+  ctx.fillStyle="yellow";
+  ctx.beginPath();
+  ctx.arc(pos.x*10,pos.y*10,8,0,Math.PI*2);
+  ctx.fill();
+ }
 
-  objs.sort((a,b)=>Math.hypot(b.x-gx,b.y-gy)-Math.hypot(a.x-gx,a.y-gy));
+ return {move,draw,getPos:()=>pos};
+};
 
-  for(let o of objs){
-    let dx=o.x-gx;
-    let dy=o.y-gy;
+// ---------------- GAME ----------------
+var game={tick:0};
 
-    let angle=Math.atan2(dy,dx)-ga;
-    while(angle<-Math.PI)angle+=Math.PI*2;
-    while(angle>Math.PI)angle-=Math.PI*2;
+function init(){
 
-    const fov=Math.PI;
+ var canvas=document.createElement("canvas");
+ canvas.width=400;
+ canvas.height=400;
+ document.getElementById("pacman").appendChild(canvas);
+ var ctx=canvas.getContext("2d");
 
-    if(Math.abs(angle)<fov){
-      let x=(angle/fov+0.5)*canvas.width;
+ var map=new Pacman.Map(10);
+ var ghost=new Pacman.PlayerGhost(game,map);
+ var pacman=new Pacman.PacAI(game,map,ghost);
 
-      // NO shrinking = always visible
-      ctx.fillStyle=o.c;
-      ctx.beginPath();
-      ctx.arc(x,canvas.height/2,o.s,0,Math.PI*2);
-      ctx.fill();
-    }
+ document.addEventListener("keydown",e=>ghost.keyDown(e));
+
+ function loop(){
+  ctx.clearRect(0,0,400,400);
+
+  ghost.move();
+  pacman.move();
+
+  ghost.draw(ctx);
+  pacman.draw(ctx);
+
+  var g=ghost.getPos();
+  var p=pacman.getPos();
+
+  if(Math.abs(g.x-p.x)<1 && Math.abs(g.y-p.y)<1){
+    ctx.fillStyle="white";
+    ctx.fillText("YOU CAUGHT PACMAN!",150,200);
   }
-}
 
-function loop(){
-  moveGhostPlayer();
-  movePacmanAI();
-  eatPellets();
-  render();
   requestAnimationFrame(loop);
+ }
+
+ loop();
 }
 
-loop();
+init();
+
+Object.prototype.clone=function(){return JSON.parse(JSON.stringify(this));};
+
 </script>
 </body>
 </html>
