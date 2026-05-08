@@ -10,7 +10,7 @@
 </head>
 <body>
     <h1>Reverse Pac-Man</h1>
-    <div class="controls">USE ARROW KEYS TO MOVE THE RED GHOST (BLINKY). CATCH PAC-MAN BEFORE HE EATS YOU!</div>
+    <div class="controls">USE ARROW KEYS TO MOVE THE RED GHOST (BLINKY). PROTECT THE PELLETS!</div>
     <canvas id="gameCanvas" width="380" height="380"></canvas>
 
     <script>
@@ -35,14 +35,12 @@
             [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-            [1,3,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,3,1],
+            [1,0,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,0,1],
             [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
-            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+            [1,3,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,3,1],
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
         ];
 
-        // Frame configuration for perfect, grid-aligned movements
-        const step = 2; // Pixel speed per frame (tileSize 20 must be divisible by this)
         let powerPelletTimer = 0;
 
         // Player Ghost (Blinky)
@@ -66,7 +64,6 @@
         });
 
         function isWallAt(px, py) {
-            // Check all 4 boundary corners of the bounding box
             let corners = [
                 {x: px, y: py},
                 {x: px + tileSize - 1, y: py},
@@ -81,28 +78,38 @@
             return false;
         }
 
-        function getValidDirections(entity) {
+        function getValidDirections(entity, currentStep) {
             let valid = [];
             let dirs = ["UP", "DOWN", "LEFT", "RIGHT"];
             for (let d of dirs) {
                 let nx = entity.x, ny = entity.y;
-                if (d === "UP") ny -= step;
-                if (d === "DOWN") ny += step;
-                if (d === "LEFT") nx -= step;
-                if (d === "RIGHT") nx += step;
+                if (d === "UP") ny -= currentStep;
+                if (d === "DOWN") ny += currentStep;
+                if (d === "LEFT") nx -= currentStep;
+                if (d === "RIGHT") nx += currentStep;
                 if (!isWallAt(nx, ny)) valid.push(d);
             }
             return valid;
         }
 
-        function movePlayerGhost() {
-            // Only allow changing directions when perfectly snapped to the grid tile
+        function checkPelletsRemaining() {
+            for (let r = 0; r < mapGrid.length; r++) {
+                for (let c = 0; c < mapGrid[r].length; c++) {
+                    if (mapGrid[r][c] === 0 || mapGrid[r][c] === 3) {
+                        return true; // There are still items to eat
+                    }
+                }
+            }
+            return false; // Grid completely cleared
+        }
+
+        function movePlayerGhost(ghostStep) {
             if (playerGhost.x % tileSize === 0 && playerGhost.y % tileSize === 0) {
                 let testX = playerGhost.x, testY = playerGhost.y;
-                if (playerGhost.nextDir === "UP") testY -= step;
-                if (playerGhost.nextDir === "DOWN") testY += step;
-                if (playerGhost.nextDir === "LEFT") testX -= step;
-                if (playerGhost.nextDir === "RIGHT") testX += step;
+                if (playerGhost.nextDir === "UP") testY -= ghostStep;
+                if (playerGhost.nextDir === "DOWN") testY += ghostStep;
+                if (playerGhost.nextDir === "LEFT") testX -= ghostStep;
+                if (playerGhost.nextDir === "RIGHT") testX += ghostStep;
 
                 if (!isWallAt(testX, testY)) {
                     playerGhost.dir = playerGhost.nextDir;
@@ -110,10 +117,10 @@
             }
 
             let nx = playerGhost.x, ny = playerGhost.y;
-            if (playerGhost.dir === "UP") ny -= step;
-            if (playerGhost.dir === "DOWN") ny += step;
-            if (playerGhost.dir === "LEFT") nx -= step;
-            if (playerGhost.dir === "RIGHT") nx += step;
+            if (playerGhost.dir === "UP") ny -= ghostStep;
+            if (playerGhost.dir === "DOWN") ny += ghostStep;
+            if (playerGhost.dir === "LEFT") nx -= ghostStep;
+            if (playerGhost.dir === "RIGHT") nx += ghostStep;
 
             if (!isWallAt(nx, ny)) {
                 playerGhost.x = nx;
@@ -121,11 +128,10 @@
             }
         }
 
-        function updateAIGhosts() {
+        function updateAIGhosts(ghostStep) {
             for (let g of aiGhosts) {
                 if (g.x % tileSize === 0 && g.y % tileSize === 0) {
-                    let valid = getValidDirections(g);
-                    // Prevent immediate 180 turn unless stuck
+                    let valid = getValidDirections(g, ghostStep);
                     let opposites = { "UP": "DOWN", "DOWN": "UP", "LEFT": "RIGHT", "RIGHT": "LEFT" };
                     let filtered = valid.filter(d => d !== opposites[g.dir]);
                     if (filtered.length > 0) valid = filtered;
@@ -134,24 +140,23 @@
                 }
 
                 let nx = g.x, ny = g.y;
-                if (g.dir === "UP") ny -= step;
-                if (g.dir === "DOWN") ny += step;
-                if (g.dir === "LEFT") nx -= step;
-                if (g.dir === "RIGHT") nx += step;
+                if (g.dir === "UP") ny -= ghostStep;
+                if (g.dir === "DOWN") ny += ghostStep;
+                if (g.dir === "LEFT") nx -= ghostStep;
+                if (g.dir === "RIGHT") nx += ghostStep;
                 if (!isWallAt(nx, ny)) { g.x = nx; g.y = ny; }
             }
         }
 
-        function updatePacmanAI() {
+        function updatePacmanAI(pacmanStep) {
             if (pacman.x % tileSize === 0 && pacman.y % tileSize === 0) {
-                let valid = getValidDirections(pacman);
+                let valid = getValidDirections(pacman, pacmanStep);
                 if (valid.length === 0) return;
 
                 let opposites = { "UP": "DOWN", "DOWN": "UP", "LEFT": "RIGHT", "RIGHT": "LEFT" };
                 let filtered = valid.filter(d => d !== opposites[pacman.dir]);
                 if (filtered.length > 0) valid = filtered;
 
-                // Find the closest active ghost target
                 let targetGhost = playerGhost;
                 let minDist = Math.hypot(pacman.x - playerGhost.x, pacman.y - playerGhost.y);
                 for (let g of aiGhosts) {
@@ -161,7 +166,6 @@
 
                 let bestDir = valid[0];
                 if (powerPelletTimer > 0) {
-                    // HUNT MODE: Select direction that reduces distance to target ghost
                     let bestScore = Infinity;
                     for (let d of valid) {
                         let nx = pacman.x, ny = pacman.y;
@@ -173,7 +177,6 @@
                         if (score < bestScore) { bestScore = score; bestDir = d; }
                     }
                 } else {
-                    // EVADE MODE: Select direction that maximizes distance away from target ghost
                     let bestScore = -Infinity;
                     for (let d of valid) {
                         let nx = pacman.x, ny = pacman.y;
@@ -189,20 +192,19 @@
             }
 
             let nx = pacman.x, ny = pacman.y;
-            if (pacman.dir === "UP") ny -= step;
-            if (pacman.dir === "DOWN") ny += step;
-            if (pacman.dir === "LEFT") nx -= step;
-            if (pacman.dir === "RIGHT") nx += step;
+            if (pacman.dir === "UP") ny -= pacmanStep;
+            if (pacman.dir === "DOWN") ny += pacmanStep;
+            if (pacman.dir === "LEFT") nx -= pacmanStep;
+            if (pacman.dir === "RIGHT") nx += pacmanStep;
             if (!isWallAt(nx, ny)) { pacman.x = nx; pacman.y = ny; }
 
-            // Consume Items
             let r = Math.floor((pacman.y + 10) / tileSize);
             let c = Math.floor((pacman.x + 10) / tileSize);
             if (mapGrid[r] && mapGrid[r][c] === 0) {
-                mapGrid[r][c] = 2; // Pellet consumed
+                mapGrid[r][c] = 2; 
             } else if (mapGrid[r] && mapGrid[r][c] === 3) {
-                mapGrid[r][c] = 2; // Power Pellet consumed
-                powerPelletTimer = 300; // Active for ~5 seconds
+                mapGrid[r][c] = 2; 
+                powerPelletTimer = 600; // 600 frames at 60fps = Exactly 10 seconds
             }
 
             if (powerPelletTimer > 0) powerPelletTimer--;
@@ -215,13 +217,11 @@
             if (dir === "LEFT") eyeOffset.x = -2;
             if (dir === "RIGHT") eyeOffset.x = 2;
 
-            // Left Eye
             ctx.fillStyle = "white";
             ctx.beginPath(); ctx.arc(gx + 6, gy + 8, 3, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = "blue";
             ctx.beginPath(); ctx.arc(gx + 6 + eyeOffset.x, gy + 8 + eyeOffset.y, 1.5, 0, Math.PI * 2); ctx.fill();
 
-            // Right Eye
             ctx.fillStyle = "white";
             ctx.beginPath(); ctx.arc(gx + 14, gy + 8, 3, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = "blue";
@@ -232,13 +232,11 @@
             let cx = g.x;
             let cy = g.y;
 
-            // Flash dark blue if Pac-man is hunting
             ctx.fillStyle = (powerPelletTimer > 0) ? (powerPelletTimer % 20 < 10 ? "#191970" : "#4169E1") : g.color;
 
             ctx.beginPath();
             ctx.arc(cx + 10, cy + 10, 9, Math.PI, 0);
             ctx.lineTo(cx + 19, cy + 19);
-            // Wave/Skirt baseline spikes
             ctx.lineTo(cx + 15, cy + 16);
             ctx.lineTo(cx + 10, cy + 19);
             ctx.lineTo(cx + 5, cy + 16);
@@ -263,7 +261,6 @@
                         ctx.fillStyle = "orange";
                         ctx.beginPath(); ctx.arc(c * tileSize + 10, r * tileSize + 10, 2.5, 0, Math.PI * 2); ctx.fill();
                     } else if (mapGrid[r][c] === 3) {
-                        // Flash power pellets
                         if (Date.now() % 400 < 200) {
                             ctx.fillStyle = "yellow";
                             ctx.beginPath(); ctx.arc(c * tileSize + 10, r * tileSize + 10, 6, 0, Math.PI * 2); ctx.fill();
@@ -272,10 +269,22 @@
                 }
             }
 
+            // Check if Pac-Man won by eating everything
+            if (!checkPelletsRemaining()) {
+                alert("Pac-Man ate all the pellets! Pac-Man wins!");
+                location.reload();
+                return;
+            }
+
+            // Speeds adapt strictly to Power Pellet State
+            // Normal: Both run at step 2. Hunt mode: Pac-man runs at step 2, Ghosts run at step 1 (slower).
+            let currentGhostStep = (powerPelletTimer > 0) ? 1 : 2;
+            let currentPacmanStep = 2; 
+
             // Calculations
-            movePlayerGhost();
-            updateAIGhosts();
-            updatePacmanAI();
+            movePlayerGhost(currentGhostStep);
+            updateAIGhosts(currentGhostStep);
+            updatePacmanAI(currentPacmanStep);
 
             // Render Actors
             drawGhost(playerGhost);
@@ -290,7 +299,6 @@
             if (pacman.dir === "RIGHT") baseRotation = 0.0;
             if (pacman.dir === "UP") baseRotation = 1.5 * Math.PI;
 
-            // Mouth animation cycle
             pacman.mouthAngle = 0.25 * Math.abs(Math.sin(Date.now() / 100));
 
             ctx.arc(
@@ -310,18 +318,21 @@
 
             if (collision) {
                 if (powerPelletTimer > 0) {
-                    alert("Pac-Man ate you! Game Over.");
+                    alert("Pac-Man ate you! Pac-Man wins!");
                 } else {
-                    alert("You caught Pac-Man! Victory!");
+                    alert("You caught Pac-Man! Ghosts Win!");
                 }
                 location.reload();
                 return;
             }
 
-            // Handle clean checks against AI companions
             for (let g of aiGhosts) {
-                if (pBox.x1 < g.x + tileSize && pBox.x2 > g.x && pBox.y1 < g.y + tileSize && pBox.y2 > g.y && powerPelletTimer > 0) {
-                    alert("Pac-Man ate one of your teammate ghosts! Game Over.");
+                if (pBox.x1 < g.x + tileSize && pBox.x2 > g.x && pBox.y1 < g.y + tileSize && pBox.y2 > g.y) {
+                    if (powerPelletTimer > 0) {
+                        alert("Pac-Man ate your teammate! Pac-Man wins!");
+                    } else {
+                        alert("Your teammate caught Pac-Man! Ghosts Win!");
+                    }
                     location.reload();
                     return;
                 }
