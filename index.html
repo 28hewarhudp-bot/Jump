@@ -21,8 +21,8 @@
         // 1 = Wall, 0 = Pellet, 3 = Power Pellet, 2 = Empty
         let mapGrid = [
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,3,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,3,1],
-            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+            [1,3,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,3,1],
             [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
             [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
@@ -35,25 +35,24 @@
             [1,1,1,1,0,1,2,1,1,1,1,1,2,1,0,1,1,1,1],
             [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
             [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,0,1],
+            [1,3,0,1,0,0,0,0,0,2,0,0,0,0,0,1,0,3,1],
             [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
-            [1,3,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,3,1],
+            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
             [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
         ];
 
         let powerPelletTimer = 0;
 
-        // Player Ghost (Blinky)
-        let playerGhost = { x: 9 * tileSize, y: 11 * tileSize, dir: "UP", nextDir: "UP", color: "red" };
+        // Base Ghost Object Structure
+        // isEyes: true means ghost was eaten and is retreating
+        let playerGhost = { x: 9 * tileSize, y: 9 * tileSize, dir: "UP", nextDir: "UP", color: "red", isEyes: false, respawnTimer: 0 };
 
-        // AI Ghosts with respawn timers (0 means active)
         let aiGhosts = [
-            { x: 8 * tileSize, y: 9 * tileSize, dir: "UP", color: "pink", respawnTimer: 0 },
-            { x: 9 * tileSize, y: 9 * tileSize, dir: "UP", color: "cyan", respawnTimer: 0 },
-            { x: 10 * tileSize, y: 9 * tileSize, dir: "UP", color: "orange", respawnTimer: 0 }
+            { x: 8 * tileSize, y: 9 * tileSize, dir: "UP", color: "pink", isEyes: false, respawnTimer: 0 },
+            { x: 9 * tileSize, y: 9 * tileSize, dir: "UP", color: "cyan", isEyes: false, respawnTimer: 0 },
+            { x: 10 * tileSize, y: 9 * tileSize, dir: "UP", color: "orange", isEyes: false, respawnTimer: 0 }
         ];
 
-        // Pac-man Object
         let pacman = { x: 9 * tileSize, y: 15 * tileSize, dir: "LEFT", nextDir: "LEFT", mouthAngle: 0.2 };
 
         window.addEventListener("keydown", (e) => {
@@ -95,15 +94,33 @@
         function checkPelletsRemaining() {
             for (let r = 0; r < mapGrid.length; r++) {
                 for (let c = 0; c < mapGrid[r].length; c++) {
-                    if (mapGrid[r][c] === 0 || mapGrid[r][c] === 3) {
-                        return true;
-                    }
+                    if (mapGrid[r][c] === 0 || mapGrid[r][c] === 3) return true;
                 }
             }
             return false;
         }
 
+        // Handles common logic for eyes flowing backwards or resetting inside box
+        function handleGhostStateAndRespawn(g) {
+            if (g.isEyes) {
+                if (g.respawnTimer > 0) {
+                    g.respawnTimer--;
+                    if (g.respawnTimer === 0) {
+                        g.isEyes = false;
+                        // For AI ghosts, eject them back north into the main run immediately
+                        g.x = 9 * tileSize;
+                        g.y = 5 * tileSize;
+                        g.dir = "UP";
+                    }
+                }
+                return true; // Is locked in respawn/eyes animation tracker
+            }
+            return false;
+        }
+
         function movePlayerGhost(ghostStep) {
+            if (handleGhostStateAndRespawn(playerGhost)) return;
+
             if (playerGhost.x % tileSize === 0 && playerGhost.y % tileSize === 0) {
                 let testX = playerGhost.x, testY = playerGhost.y;
                 if (playerGhost.nextDir === "UP") testY -= ghostStep;
@@ -130,17 +147,7 @@
 
         function updateAIGhosts(ghostStep) {
             for (let g of aiGhosts) {
-                // If ghost is in jail, tick down the timer
-                if (g.respawnTimer > 0) {
-                    g.respawnTimer--;
-                    if (g.respawnTimer === 0) {
-                        // Return to the maze entry point above the house box
-                        g.x = 9 * tileSize;
-                        g.y = 5 * tileSize;
-                        g.dir = "UP";
-                    }
-                    continue; // Skip movement processing while dead
-                }
+                if (handleGhostStateAndRespawn(g)) continue;
 
                 if (g.x % tileSize === 0 && g.y % tileSize === 0) {
                     let valid = getValidDirections(g, ghostStep);
@@ -169,15 +176,19 @@
                 let filtered = valid.filter(d => d !== opposites[pacman.dir]);
                 if (filtered.length > 0) valid = filtered;
 
-                // Find the closest active (non-respawning) ghost target
-                let targetGhost = playerGhost;
-                let minDist = Math.hypot(pacman.x - playerGhost.x, pacman.y - playerGhost.y);
-                
-                for (let g of aiGhosts) {
-                    if (g.respawnTimer > 0) continue; // Ignore dead targets
-                    let d = Math.hypot(pacman.x - g.x, pacman.y - g.y);
-                    if (d < minDist) { minDist = d; targetGhost = g; }
+                // Pick closest threat that isn't currently just eyes/respawning
+                let targetGhost = null;
+                let minDist = Infinity;
+
+                let threats = [playerGhost, ...aiGhosts];
+                for (let t of threats) {
+                    if (t.isEyes) continue; 
+                    let d = Math.hypot(pacman.x - t.x, pacman.y - t.y);
+                    if (d < minDist) { minDist = d; targetGhost = t; }
                 }
+
+                // Default fallback if all ghosts are dead/eyes
+                if (!targetGhost) targetGhost = playerGhost;
 
                 let bestDir = valid;
                 if (powerPelletTimer > 0) {
@@ -219,7 +230,7 @@
                 mapGrid[r][c] = 2; 
             } else if (mapGrid[r] && mapGrid[r][c] === 3) {
                 mapGrid[r][c] = 2; 
-                powerPelletTimer = 600; // Exactly 10 seconds
+                powerPelletTimer = 600; // 10 seconds
             }
 
             if (powerPelletTimer > 0) powerPelletTimer--;
@@ -247,17 +258,19 @@
             let cx = g.x;
             let cy = g.y;
 
-            ctx.fillStyle = (powerPelletTimer > 0) ? (powerPelletTimer % 20 < 10 ? "#191970" : "#4169E1") : g.color;
-
-            ctx.beginPath();
-            ctx.arc(cx + 10, cy + 10, 9, Math.PI, 0);
-            ctx.lineTo(cx + 19, cy + 19);
-            ctx.lineTo(cx + 15, cy + 16);
-            ctx.lineTo(cx + 10, cy + 19);
-            ctx.lineTo(cx + 5, cy + 16);
-            ctx.lineTo(cx + 1, cy + 19);
-            ctx.closePath();
-            ctx.fill();
+            // If the ghost is just eyes, do not draw the colored body skirts
+            if (!g.isEyes) {
+                ctx.fillStyle = (powerPelletTimer > 0) ? (powerPelletTimer % 20 < 10 ? "#191970" : "#4169E1") : g.color;
+                ctx.beginPath();
+                ctx.arc(cx + 10, cy + 10, 9, Math.PI, 0);
+                ctx.lineTo(cx + 19, cy + 19);
+                ctx.lineTo(cx + 15, cy + 16);
+                ctx.lineTo(cx + 10, cy + 19);
+                ctx.lineTo(cx + 5, cy + 16);
+                ctx.lineTo(cx + 1, cy + 19);
+                ctx.closePath();
+                ctx.fill();
+            }
 
             drawGhostEyes(cx, cy, g.dir);
         }
@@ -266,7 +279,6 @@
             ctx.fillStyle = "black";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Map Terrain
             for (let r = 0; r < mapGrid.length; r++) {
                 for (let c = 0; c < mapGrid[r].length; c++) {
                     if (mapGrid[r][c] === 1) {
@@ -300,9 +312,7 @@
 
             // Render Actors
             drawGhost(playerGhost);
-            aiGhosts.forEach(g => {
-                if (g.respawnTimer === 0) drawGhost(g);
-            });
+            aiGhosts.forEach(drawGhost);
 
             // Render Pac-man
             ctx.fillStyle = "yellow";
@@ -327,28 +337,35 @@
             // Precise Bounding Box Intersections
             let pBox = { x1: pacman.x, y1: pacman.y, x2: pacman.x + tileSize, y2: pacman.y + tileSize };
             
-            // Check Player Ghost
-            let gBox = { x1: playerGhost.x, y1: playerGhost.y, x2: playerGhost.x + tileSize, y2: playerGhost.y + tileSize };
-            if (pBox.x1 < gBox.x2 && pBox.x2 > gBox.x1 && pBox.y1 < gBox.y2 && pBox.y2 > gBox.y1) {
-                if (powerPelletTimer > 0) {
-                    alert("Pac-Man ate you! Pac-Man wins!");
-                } else {
-                    alert("You caught Pac-Man! Ghosts Win!");
+            // Check Player Ghost (Red) Collision
+            if (!playerGhost.isEyes) {
+                let gBox = { x1: playerGhost.x, y1: playerGhost.y, x2: playerGhost.x + tileSize, y2: playerGhost.y + tileSize };
+                if (pBox.x1 < gBox.x2 && pBox.x2 > gBox.x1 && pBox.y1 < gBox.y2 && pBox.y2 > gBox.y1) {
+                    if (powerPelletTimer > 0) {
+                        // Player eaten: turn to eyes, move instantly to spawn box
+                        playerGhost.isEyes = true;
+                        playerGhost.x = 9 * tileSize;
+                        playerGhost.y = 9 * tileSize;
+                        playerGhost.respawnTimer = 180; // 3 seconds penalty before player can control again
+                    } else {
+                        alert("You caught Pac-Man! Ghosts Win!");
+                        location.reload();
+                        return;
+                    }
                 }
-                location.reload();
-                return;
             }
 
-            // Check AI Teammates
+            // Check AI Teammates Collision
             for (let g of aiGhosts) {
-                if (g.respawnTimer > 0) continue; // Skip collisions if already dead
+                if (g.isEyes) continue; 
                 
                 if (pBox.x1 < g.x + tileSize && pBox.x2 > g.x && pBox.y1 < g.y + tileSize && pBox.y2 > g.y) {
                     if (powerPelletTimer > 0) {
-                        // Send AI teammate back to the ghost house box coordinates
+                        // AI eaten: turn to eyes, move instantly to spawn box
+                        g.isEyes = true;
                         g.x = 9 * tileSize;
                         g.y = 9 * tileSize;
-                        g.respawnTimer = 240; // ~4 seconds at 60fps
+                        g.respawnTimer = 180; // 3 seconds penalty
                     } else {
                         alert("Your teammate caught Pac-Man! Ghosts Win!");
                         location.reload();
