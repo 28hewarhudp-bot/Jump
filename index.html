@@ -1,146 +1,249 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>8-Bit Maze Chase</title>
-<style>
-body {
-  margin: 0;
-  background: black;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  color: white;
-  font-family: monospace;
-}
-canvas {
-  image-rendering: pixelated;
-  border: 4px solid #222;
-}
-#info {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-}
-</style>
-</head>
-<body>
-<div id="info">Arrow keys to move | Reach green exit</div>
-<canvas id="game" width="640" height="640"></canvas>
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+extends Node2D
 
-const tileSize = 20;
-const cols = canvas.width / tileSize;
-const rows = canvas.height / tileSize;
 
-// 0 = path, 1 = wall, 2 = exit
-let maze = [];
-let player, monster;
-let level = 1;
+# --------------------
+# PLAYER
+# --------------------
 
-function generateMaze() {
-  maze = [];
-  for (let y = 0; y < rows; y++) {
-    let row = [];
-    for (let x = 0; x < cols; x++) {
-      if (x === 0 || y === 0 || x === cols - 1 || y === rows - 1) {
-        row.push(1);
-      } else {
-        row.push(Math.random() < 0.22 ? 1 : 0);
-      }
-    }
-    maze.push(row);
-  }
+var player_pos = Vector2(300,300)
+var player_speed = 200
 
-  // ensure start & exit
-  maze[1][1] = 0;
-  maze[rows - 2][cols - 2] = 2;
+var health = 100
+var flashlight_on = false
+var door_closed = false
 
-  player = { x: 1, y: 1 };
-  monster = { x: cols - 2, y: 1 };
-}
 
-function drawMaze() {
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      if (maze[y][x] === 1) ctx.fillStyle = "#111";
-      else if (maze[y][x] === 2) ctx.fillStyle = "#0f0";
-      else ctx.fillStyle = "#000";
+# --------------------
+# MONSTERS
+# --------------------
 
-      ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-    }
-  }
-}
+var monsters = []
 
-function drawPlayer() {
-  ctx.fillStyle = "#00f";
-  ctx.fillRect(player.x * tileSize, player.y * tileSize, tileSize, tileSize);
-}
+var monster_speed = 100
+var spawn_timer = 0
 
-function drawMonster() {
-  ctx.fillStyle = "#f00";
-  ctx.fillRect(monster.x * tileSize, monster.y * tileSize, tileSize, tileSize);
-}
+var hallway_limit = 500
 
-function movePlayer(dx, dy) {
-  let nx = player.x + dx;
-  let ny = player.y + dy;
-  if (maze[ny][nx] !== 1) {
-    player.x = nx;
-    player.y = ny;
-  }
 
-  if (maze[player.y][player.x] === 2) {
-    level++;
-    generateMaze();
-  }
-}
+# --------------------
+# START
+# --------------------
 
-// Monster AI (always tracks player)
-function moveMonster() {
-  let dx = player.x - monster.x;
-  let dy = player.y - monster.y;
+func _ready():
 
-  let stepX = Math.sign(dx);
-  let stepY = Math.sign(dy);
+	randomize()
 
-  // try horizontal first
-  if (maze[monster.y][monster.x + stepX] !== 1) {
-    monster.x += stepX;
-  } else if (maze[monster.y + stepY][monster.x] !== 1) {
-    monster.y += stepY;
-  }
+	for i in range(2):
+		spawn_monster()
 
-  // collision
-  if (monster.x === player.x && monster.y === player.y) {
-    alert("Caught! Restarting level");
-    generateMaze();
-  }
-}
 
-function loop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  drawMaze();
-  drawPlayer();
-  drawMonster();
-  moveMonster();
+# --------------------
+# GAME LOOP
+# --------------------
 
-  requestAnimationFrame(loop);
-}
+func _process(delta):
 
-window.addEventListener("keydown", e => {
-  if (e.key === "ArrowUp") movePlayer(0, -1);
-  if (e.key === "ArrowDown") movePlayer(0, 1);
-  if (e.key === "ArrowLeft") movePlayer(-1, 0);
-  if (e.key === "ArrowRight") movePlayer(1, 0);
-});
+	move_player(delta)
 
-generateMaze();
-loop();
-</script>
-</body>
-</html>
+	update_monsters(delta)
+
+	check_danger()
+
+	spawn_timer += delta
+
+	if spawn_timer > 8:
+
+		spawn_timer = 0
+
+		spawn_monster()
+
+	queue_redraw()
+
+
+
+# --------------------
+# INPUT
+# --------------------
+
+func _input(event):
+
+	if event.is_action_pressed("flashlight"):
+
+		flashlight_on = !flashlight_on
+
+		print("Flashlight:", flashlight_on)
+
+
+	if event.is_action_pressed("door"):
+
+		door_closed = !door_closed
+
+		print("Door:", door_closed)
+
+
+
+# --------------------
+# PLAYER MOVEMENT
+# --------------------
+
+func move_player(delta):
+
+	var direction = Vector2.ZERO
+
+
+	if Input.is_action_pressed("move_up"):
+		direction.y -= 1
+
+	if Input.is_action_pressed("move_down"):
+		direction.y += 1
+
+	if Input.is_action_pressed("move_left"):
+		direction.x -= 1
+
+	if Input.is_action_pressed("move_right"):
+		direction.x += 1
+
+
+	if direction.length() > 0:
+		direction = direction.normalized()
+
+
+	player_pos += direction * player_speed * delta
+
+
+
+# --------------------
+# MONSTERS
+# --------------------
+
+func spawn_monster():
+
+	var pos = Vector2(
+
+		randi_range(600,900),
+		randi_range(100,500)
+
+	)
+
+	monsters.append(pos)
+
+
+
+func update_monsters(delta):
+
+	for i in range(monsters.size()):
+
+		var direction = (
+			player_pos - monsters[i]
+		).normalized()
+
+		monsters[i] += direction * monster_speed * delta
+
+
+
+# --------------------
+# DAMAGE
+# --------------------
+
+func check_danger():
+
+	for monster in monsters:
+
+		var distance = monster.distance_to(
+			player_pos
+		)
+
+
+		if distance < 40:
+
+			if not door_closed:
+
+				health -= 1
+
+				jumpscare()
+
+
+		if health <= 0:
+
+			game_over()
+
+
+
+# --------------------
+# GAME OVER
+# --------------------
+
+func game_over():
+
+	print("GAME OVER")
+
+	get_tree().reload_current_scene()
+
+
+
+# --------------------
+# JUMPSCARE
+# --------------------
+
+func jumpscare():
+
+	print("!!! MONSTER !!!")
+
+
+
+# --------------------
+# GRAPHICS
+# --------------------
+
+func _draw():
+
+	# room
+	draw_rect(
+		Rect2(0,0,1000,600),
+		Color(0.1,0.1,0.15)
+	)
+
+
+	# hallway
+	draw_rect(
+		Rect2(500,0,500,600),
+		Color(0.05,0.05,0.05)
+	)
+
+
+	# door
+	if door_closed:
+
+		draw_rect(
+			Rect2(460,250,40,100),
+			Color(0.5,0.2,0.1)
+		)
+
+
+	# flashlight glow
+	if flashlight_on:
+
+		draw_circle(
+			player_pos,
+			120,
+			Color(1,1,0.7,0.3)
+		)
+
+
+	# player (kid)
+	draw_circle(
+		player_pos,
+		16,
+		Color(0.3,0.7,1)
+	)
+
+
+	# monsters
+	for monster in monsters:
+
+		draw_circle(
+			monster,
+			20,
+			Color(1,0,0)
+		)
