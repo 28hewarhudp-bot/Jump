@@ -2,14 +2,14 @@
 <html>
 <head>
 <meta charset="UTF-8" />
-<title>Ghost Player vs AI Pacman</title>
+<title>Ghost vs AI Pacman (BIG VISIBILITY FIX)</title>
 <style>
   body { margin:0; overflow:hidden; background:black; }
   #hud { position:absolute; top:10px; left:10px; color:white; font-family:sans-serif; }
 </style>
 </head>
 <body>
-<div id="hud">YOU ARE THE GHOST 👻 | WASD move | AI Pacman eats pellets</div>
+<div id="hud">YOU = GHOST 👻 | BIG PACMAN + BIG PELLETS FIX</div>
 <canvas id="game"></canvas>
 <script>
 const canvas=document.getElementById("game");
@@ -29,8 +29,8 @@ const map=[
 [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-let gx=2,gy=2,ga=0; // YOU = GHOST
-let px=20,py=6;      // AI PACMAN
+let gx=2,gy=2,ga=0;
+let px=20,py=6;
 
 const keys={};
 addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
@@ -47,7 +47,7 @@ function isWall(x,y){
   return map[Math.floor(y)]?.[Math.floor(x)]===1;
 }
 
-// PLAYER GHOST MOVEMENT
+// GHOST CONTROL (YOU)
 function moveGhostPlayer(){
   const s=0.06;
   if(keys["w"]){let nx=gx+Math.cos(ga)*s,ny=gy+Math.sin(ga)*s;if(!isWall(nx,ny)){gx=nx;gy=ny;}}
@@ -61,27 +61,22 @@ function movePacmanAI(){
   let target = pellets[0];
   if(!target) return;
 
-  let dx = target.x - px;
-  let dy = target.y - py;
+  let dx=target.x-px;
+  let dy=target.y-py;
 
-  let sp=0.04;
-  let nx = px + Math.sign(dx)*sp;
-  let ny = py + Math.sign(dy)*sp;
-
-  if(!isWall(nx,py)) px=nx;
-  if(!isWall(px,ny)) py=ny;
+  let sp=0.05;
+  if(!isWall(px+Math.sign(dx)*sp,py)) px+=Math.sign(dx)*sp;
+  if(!isWall(px,py+Math.sign(dy)*sp)) py+=Math.sign(dy)*sp;
 }
 
 function eatPellets(){
-  pellets = pellets.filter(p=>Math.hypot(px-p.x,py-p.y)>0.3);
+  pellets=pellets.filter(p=>Math.hypot(px-p.x,py-p.y)>0.35);
 }
 
-// RENDER
 function render(){
   ctx.fillStyle="black";
   ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  // draw walls (simple 3D ray)
   const fov=Math.PI/3;
   const rays=120;
 
@@ -98,7 +93,7 @@ function render(){
       if(isWall(tx,ty))hit=true;
     }
 
-    const h=(canvas.height/dist)*0.8;
+    const h=(canvas.height/dist)*0.85;
     ctx.fillStyle=`rgb(0,0,${255-dist*10})`;
     ctx.fillRect(i*(canvas.width/rays),canvas.height/2-h/2,canvas.width/rays+1,h);
   }
@@ -106,25 +101,26 @@ function render(){
   drawSprites();
 }
 
-// FIXED VISIBILITY SPRITES
+// BIG VISIBILITY FIX HERE
 function drawSprites(){
   let objs=[];
 
-  // pellets
-  for(let p of pellets){objs.push({x:p.x,y:p.y,c:"yellow",s:5});}
+  // BIG PELLETS
+  for(let p of pellets){
+    objs.push({x:p.x,y:p.y,c:"yellow",s:10});
+  }
 
-  // pacman AI
-  objs.push({x:px,y:py,c:"yellow",s:18});
+  // BIG PACMAN
+  objs.push({x:px,y:py,c:"yellow",s:26});
 
-  // YOU (ghost)
-  objs.push({x:gx,y:gy,c:"red",s:22});
+  // BIG GHOST (YOU)
+  objs.push({x:gx,y:gy,c:"red",s:30});
 
   objs.sort((a,b)=>Math.hypot(b.x-gx,b.y-gy)-Math.hypot(a.x-gx,a.y-gy));
 
   for(let o of objs){
     let dx=o.x-gx;
     let dy=o.y-gy;
-    let dist=Math.hypot(dx,dy);
 
     let angle=Math.atan2(dy,dx)-ga;
     while(angle<-Math.PI)angle+=Math.PI*2;
@@ -134,9 +130,25 @@ function drawSprites(){
 
     if(Math.abs(angle)<fov){
       let x=(angle/fov+0.5)*canvas.width;
-      let size=o.s;
 
+      // NO shrinking = always visible
       ctx.fillStyle=o.c;
       ctx.beginPath();
-      ctx.arc(x,canvas.height/2,size,0,Math.PI*2);
-      ctx
+      ctx.arc(x,canvas.height/2,o.s,0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+
+function loop(){
+  moveGhostPlayer();
+  movePacmanAI();
+  eatPellets();
+  render();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
