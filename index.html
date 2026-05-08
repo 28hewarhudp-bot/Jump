@@ -2,22 +2,22 @@
 <html>
 <head>
 <meta charset="UTF-8" />
-<title>First Person Pacman</title>
+<title>3D Pacman with Ghost AI</title>
 <style>
   body { margin:0; overflow:hidden; background:black; }
   #hud { position:absolute; top:10px; left:10px; color:white; font-family:sans-serif; }
 </style>
 </head>
 <body>
-<div id="hud">WASD move | Yellow = pellets | Red = ghosts</div>
+<div id="hud">WASD move | Blinky Pinky Inky Clyde AI</div>
 <canvas id="game"></canvas>
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-canvas.width = innerWidth;
-canvas.height = innerHeight;
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+canvas.width=innerWidth;
+canvas.height=innerHeight;
 
-const map = [
+const map=[
 [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
 [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
 [1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1],
@@ -29,100 +29,92 @@ const map = [
 [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-let px = 2;
-let py = 2;
-let pa = 0;
+let px=2,py=2,pa=0;
+const keys={};
+addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-const keys = {};
-addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-// pellets
-let pellets = [];
+let pellets=[];
 for(let y=0;y<map.length;y++){
   for(let x=0;x<map[y].length;x++){
-    if(map[y][x]===0){
-      pellets.push({x,y});
-    }
+    if(map[y][x]==0) pellets.push({x,y});
   }
 }
 
-// ghosts
-let ghosts = [
-  {x:10,y:4},
-  {x:15,y:6},
-  {x:20,y:3}
+// GHOSTS WITH AI
+let ghosts=[
+  {x:10,y:4,color:"red",type:"blinky"},
+  {x:15,y:6,color:"pink",type:"pinky"},
+  {x:20,y:3,color:"cyan",type:"inky"},
+  {x:5,y:6,color:"orange",type:"clyde"}
 ];
 
 function isWall(x,y){
-  return map[Math.floor(y)]?.[Math.floor(x)] === 1;
+  return map[Math.floor(y)]?.[Math.floor(x)]===1;
 }
 
 function movePlayer(){
-  const speed=0.05;
-
+  const s=0.05;
   if(keys["w"]){
-    let nx=px+Math.cos(pa)*speed;
-    let ny=py+Math.sin(pa)*speed;
+    let nx=px+Math.cos(pa)*s;
+    let ny=py+Math.sin(pa)*s;
     if(!isWall(nx,ny)){px=nx;py=ny;}
   }
   if(keys["s"]){
-    let nx=px-Math.cos(pa)*speed;
-    let ny=py-Math.sin(pa)*speed;
+    let nx=px-Math.cos(pa)*s;
+    let ny=py-Math.sin(pa)*s;
     if(!isWall(nx,ny)){px=nx;py=ny;}
   }
-  if(keys["a"]) pa-=0.03;
-  if(keys["d"]) pa+=0.03;
+  if(keys["a"])pa-=0.03;
+  if(keys["d"])pa+=0.03;
 }
 
 function moveGhosts(){
+  const blinky = ghosts[0];
+
   for(let g of ghosts){
-    let dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-    let d=dirs[Math.floor(Math.random()*4)];
 
-    let nx=g.x+d[0]*0.05;
-    let ny=g.y+d[1]*0.05;
+    let tx,ty;
 
-    if(!isWall(nx,ny)){
-      g.x=nx;
-      g.y=ny;
+    if(g.type=="blinky"){
+      tx=px;ty=py;
     }
 
-    g.x += (px-g.x)*0.002;
-    g.y += (py-g.y)*0.002;
+    if(g.type=="pinky"){
+      tx=px+Math.cos(pa)*4;
+      ty=py+Math.sin(pa)*4;
+    }
+
+    if(g.type=="inky"){
+      let ax=px+Math.cos(pa)*2;
+      let ay=py+Math.sin(pa)*2;
+      tx=blinky.x+(ax-blinky.x)*2;
+      ty=blinky.y+(ay-blinky.y)*2;
+    }
+
+    if(g.type=="clyde"){
+      let d=Math.hypot(px-g.x,py-g.y);
+      if(d>6){tx=px;ty=py;} else {
+        tx=g.x+(Math.random()-0.5)*4;
+        ty=g.y+(Math.random()-0.5)*4;
+      }
+    }
+
+    let dx=tx-g.x;
+    let dy=ty-g.y;
+    g.x+=dx*0.01;
+    g.y+=dy*0.01;
+
+    let r=[[1,0],[-1,0],[0,1],[0,-1]];
+    let d=r[Math.floor(Math.random()*4)];
+    let nx=g.x+d[0]*0.02;
+    let ny=g.y+d[1]*0.02;
+    if(!isWall(nx,ny)){g.x=nx;g.y=ny;}
   }
 }
 
 function eatPellets(){
-  pellets = pellets.filter(p=>Math.hypot(px-p.x,py-p.y)>0.3);
-}
-
-function drawMinimap(){
-  const scale=6;
-  ctx.fillStyle="rgba(0,0,0,0.5)";
-  ctx.fillRect(10,10,map[0].length*scale,map.length*scale);
-
-  for(let y=0;y<map.length;y++){
-    for(let x=0;x<map[y].length;x++){
-      if(map[y][x]===1){
-        ctx.fillStyle="blue";
-        ctx.fillRect(10+x*scale,10+y*scale,scale,scale);
-      }
-    }
-  }
-
-  ctx.fillStyle="yellow";
-  for(let p of pellets){
-    ctx.fillRect(10+p.x*scale,10+p.y*scale,2,2);
-  }
-
-  ctx.fillStyle="red";
-  for(let g of ghosts){
-    ctx.fillRect(10+g.x*scale,10+g.y*scale,4,4);
-  }
-
-  ctx.fillStyle="white";
-  ctx.fillRect(10+px*scale,10+py*scale,4,4);
+  pellets=pellets.filter(p=>Math.hypot(px-p.x,py-p.y)>0.25);
 }
 
 function render3D(){
@@ -133,38 +125,6 @@ function render3D(){
   const rays=140;
 
   for(let i=0;i<rays;i++){
-    const rayA=pa-fov/2+(i/rays)*fov;
+    const ra=pa-fov/2+(i/rays)*fov;
     let dist=0;
     let hit=false;
-
-    const ex=Math.cos(rayA);
-    const ey=Math.sin(rayA);
-
-    while(!hit&&dist<25){
-      dist+=0.05;
-      let tx=px+ex*dist;
-      let ty=py+ey*dist;
-      if(isWall(tx,ty)) hit=true;
-    }
-
-    const h=(canvas.height/dist)*0.7;
-    const shade=255-dist*10;
-    ctx.fillStyle=`rgb(0,0,${shade})`;
-    ctx.fillRect(i*(canvas.width/rays),canvas.height/2-h/2,canvas.width/rays+1,h);
-  }
-
-  drawMinimap();
-}
-
-function loop(){
-  movePlayer();
-  moveGhosts();
-  eatPellets();
-  render3D();
-  requestAnimationFrame(loop);
-}
-
-loop();
-</script>
-</body>
-</html>
