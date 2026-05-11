@@ -1,119 +1,170 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Jumping Spider: High Visibility Garden</title>
+    <title>Spider Garden: Top Down</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #fff; text-shadow: 2px 2px #000; pointer-events: none; z-index: 10; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background: white; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0.7; }
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; font-family: sans-serif; overflow: hidden; }
+        canvas { background: #4e3b31; border: 5px solid #2d1f18; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #ui { position: absolute; top: 20px; color: white; text-align: center; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h2 id="web-count">WEBS: 5/5</h2>
-        <p><b>E:</b> Set Safety Web | <b>SPACE:</b> Jump/Climb | <b>F:</b> Attack</p>
+        <h2 id="web-display">WEBS: 5/5</h2>
+        <p>WASD to Move | SPACE to Jump | E for Safety Web | F to Attack Flies</p>
     </div>
-    <div id="crosshair"></div>
+    <canvas id="gameCanvas"></canvas>
 
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com" } }
-    </script>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 600;
 
-    <script type="module">
-        import * as THREE from 'three';
+        let webs = 5;
+        let flies = [];
+        let leaves = [];
+        let safetyWeb = null;
+        let frame = 0;
 
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // Bright sky color
-        scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+        const player = {
+            x: 400, y: 300, radius: 15, 
+            isJumping: false, jumpScale: 1,
+            onLeaf: true
+        };
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        // --- ENHANCED LIGHTING ---
-        const ambient = new THREE.AmbientLight(0xffffff, 1.5); // Very bright ambient light
-        scene.add(ambient);
-        const sun = new THREE.DirectionalLight(0xffffff, 2); 
-        sun.position.set(10, 50, 10); 
-        scene.add(sun);
-
-        // --- GARDEN WORLD ---
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x4e3b31 }));
-        ground.rotation.x = -Math.PI / 2;
-        scene.add(ground);
-
-        function createPlant(x, z) {
-            const h = Math.random() * 8 + 4;
-            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.2, h), new THREE.MeshStandardMaterial({ color: 0x228B22 }));
-            stem.position.set(x, h/2, z);
-            scene.add(stem);
-
-            const leaf = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 2, 0, Math.PI*2, 0, 0.2), new THREE.MeshStandardMaterial({ color: 0x32CD32, side: THREE.DoubleSide }));
-            leaf.position.set(x, h, z);
-            leaf.rotation.x = Math.random() * 0.5;
-            scene.add(leaf);
+        // Create random giant leaves
+        for(let i=0; i<8; i++) {
+            leaves.push({
+                x: Math.random() * 700 + 50,
+                y: Math.random() * 500 + 50,
+                r: Math.random() * 40 + 60
+            });
         }
-        for(let i=0; i<40; i++) createPlant(Math.random()*80-40, Math.random()*80-40);
 
-        // --- PHYSICS & CONTROLS ---
-        let webs = 5, isJumping = false, safetyLine = null, anchor = new THREE.Vector3(), velocityY = 0;
+        function spawnFly() {
+            flies.push({ x: Math.random() * 750, y: Math.random() * 550 });
+        }
+        for(let i=0; i<3; i++) spawnFly();
+
         const keys = {};
-
-        camera.position.set(0, 1.5, 5); // Start above the origin to avoid clipping
-
-        document.addEventListener('click', () => renderer.domElement.requestPointerLock());
-        document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement) {
-                camera.rotation.y -= e.movementX * 0.003;
-                camera.rotation.x -= e.movementY * 0.003;
-                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
-            }
-        });
-        camera.rotation.order = 'YXZ';
-        window.addEventListener('keydown', (e) => keys[e.code] = true);
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
-
-        function update() {
-            const speed = 0.2;
-            if (keys['KeyW']) camera.translateZ(-speed);
-            if (keys['KeyS']) camera.translateZ(speed);
-            if (keys['KeyA']) camera.translateX(-speed);
-            if (keys['KeyD']) camera.translateX(speed);
-
-            if (keys['KeyE'] && !safetyLine && webs > 0) {
+        window.onkeydown = (e) => {
+            keys[e.key.toLowerCase()] = true;
+            if(e.key === 'e' && !safetyWeb && webs > 0) {
                 webs--;
-                document.getElementById('web-count').innerText = `WEBS: ${webs}/5`;
-                anchor.copy(camera.position);
-                safetyLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([anchor, camera.position]), new THREE.LineBasicMaterial({ color: 0xffffff }));
-                scene.add(safetyLine);
+                safetyWeb = { x: player.x, y: player.y };
+                updateUI();
             }
+        };
+        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
-            if (keys['Space'] && !isJumping) { isJumping = true; velocityY = 0.3; }
-
-            if (isJumping || camera.position.y > 1.5) {
-                camera.position.y += velocityY;
-                velocityY -= 0.015;
-
-                if (safetyLine && keys['Space']) {
-                    camera.position.lerp(anchor, 0.1);
-                    velocityY = 0;
-                }
-
-                if (safetyLine) safetyLine.geometry.setFromPoints([anchor, camera.position]);
-
-                if (camera.position.y <= 1.5) {
-                    camera.position.y = 1.5; isJumping = false; velocityY = 0;
-                    if (safetyLine) { scene.remove(safetyLine); safetyLine = null; }
-                }
-
-                if (camera.position.y < -10) { alert("Missed the jump! Game Over."); location.reload(); }
-            }
-
-            renderer.render(scene, camera);
-            requestAnimationFrame(update);
+        function updateUI() {
+            document.getElementById('web-display').innerText = `WEBS: ${webs}/5`;
         }
-        update();
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            frame++;
+
+            // Draw Leaves
+            ctx.fillStyle = "#2d5a27";
+            leaves.forEach(l => {
+                ctx.beginPath(); ctx.arc(l.x, l.y, l.r, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "#32CD32"; ctx.lineWidth = 3; ctx.stroke();
+            });
+
+            // Draw Safety Web
+            if(safetyWeb) {
+                ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(safetyWeb.x, safetyWeb.y); ctx.lineTo(player.x, player.y); ctx.stroke();
+                // Anchor point
+                ctx.fillStyle = "white";
+                ctx.beginPath(); ctx.arc(safetyWeb.x, safetyWeb.y, 4, 0, Math.PI*2); ctx.fill();
+            }
+
+            // Draw Flies
+            ctx.fillStyle = "yellow";
+            flies.forEach(f => {
+                ctx.beginPath(); ctx.arc(f.x, f.y, 5, 0, Math.PI*2); ctx.fill();
+            });
+
+            // Movement Logic
+            let speed = 4;
+            if(keys['a']) player.x -= speed;
+            if(keys['d']) player.x += speed;
+            if(keys['w']) player.y -= speed;
+            if(keys['s']) player.y += speed;
+
+            // Jumping Logic
+            if(keys[' '] && !player.isJumping) {
+                player.isJumping = true;
+                player.jumpScale = 1.5; // Visual jump height
+                setTimeout(() => {
+                    player.isJumping = false;
+                    player.jumpScale = 1;
+                    checkLanding();
+                }, 500);
+            }
+
+            // Reel in Web (Hold Space while falling)
+            if(keys[' '] && safetyWeb && !player.onLeaf) {
+                let dx = safetyWeb.x - player.x;
+                let dy = safetyWeb.y - player.y;
+                player.x += dx * 0.1;
+                player.y += dy * 0.1;
+            }
+
+            // Attack Logic (F)
+            if(keys['f']) {
+                flies.forEach((f, i) => {
+                    let dist = Math.hypot(player.x - f.x, player.y - f.y);
+                    if(dist < 30) {
+                        flies.splice(i, 1);
+                        webs = Math.min(5, webs + 1);
+                        updateUI();
+                        spawnFly();
+                    }
+                });
+            }
+
+            function checkLanding() {
+                let landed = false;
+                leaves.forEach(l => {
+                    if(Math.hypot(player.x - l.x, player.y - l.y) < l.r) landed = true;
+                });
+                player.onLeaf = landed;
+                if(!landed && !safetyWeb) {
+                    alert("You fell off the leaf! Game Over.");
+                    location.reload();
+                } else if (landed) {
+                    safetyWeb = null; // Reset web on safe landing
+                }
+            }
+
+            // Draw Spider
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.scale(player.jumpScale, player.jumpScale);
+            ctx.fillStyle = "black";
+            // Body
+            ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI*2); ctx.fill();
+            // Eyes
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.arc(-5, -5, 3, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(5, -5, 3, 0, Math.PI*2); ctx.fill();
+            // Legs (8 legs)
+            ctx.strokeStyle = "black"; ctx.lineWidth = 3;
+            for(let i=0; i<8; i++) {
+                let angle = (i * Math.PI / 4) + (frame * 0.1);
+                ctx.beginPath(); ctx.moveTo(0, 0); 
+                ctx.lineTo(Math.cos(angle)*25, Math.sin(angle)*25); ctx.stroke();
+            }
+            ctx.restore();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
     </script>
 </body>
 </html>
