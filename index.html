@@ -1,163 +1,217 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Reverse Pac-Man: Red Ghost Edition</title>
+    <title>Reverse Pac-Man: Ghost Squad</title>
     <style>
-        body { background: #111; color: white; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; }
-        canvas { border: 4px solid #222; background: black; }
-        .stats { margin-top: 10px; font-size: 20px; }
+        body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: 'Courier New', Courier, monospace; margin: 0; overflow: hidden; }
+        canvas { border: 2px solid #222; background: #000; box-shadow: 0 0 20px #0000ff33; }
+        .ui { margin: 10px; font-size: 18px; color: #f1f1f1; text-transform: uppercase; letter-spacing: 2px; }
+        #status { color: #ff0000; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>YOU ARE THE RED GHOST</h1>
-    <p>Catch Pac-Man before he eats all the pellets!</p>
-    <canvas id="gameCanvas" width="400" height="400"></canvas>
-    <div class="stats">Pellets Left: <span id="pelletCount">0</span></div>
+    <div class="ui">Target: Pac-Man | Status: <span id="status">HUNTING</span></div>
+    <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const pelletDisplay = document.getElementById('pelletCount');
+const statusText = document.getElementById('status');
 
-const TILE_SIZE = 20;
-const SPEED = 2;
+const TILE = 24;
+const MAP_WIDTH = 19;
+const MAP_HEIGHT = 21;
+canvas.width = MAP_WIDTH * TILE;
+canvas.height = MAP_HEIGHT * TILE;
 
-// 1 = Wall, 0 = Pellet
-const map = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
-    [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
-    [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
-    [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
-    [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
-    [1,0,0,0,0,1,0,1,1,0,0,1,1,0,1,0,0,0,0,1],
-    [1,0,1,1,1,1,0,1,0,0,0,0,1,0,1,1,1,1,0,1],
-    [1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1],
-    [1,0,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,1,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+// 1=Wall, 0=Pellet, 2=PowerPellet, 3=Empty
+const layout = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,2,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,1],
+    [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
+    [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+    [1,1,1,1,0,1,1,1,3,1,3,1,1,1,0,1,1,1,1],
+    [3,3,3,1,0,1,3,3,3,3,3,3,3,1,0,1,3,3,3],
+    [1,1,1,1,0,1,3,1,1,3,1,1,3,1,0,1,1,1,1],
+    [3,3,3,3,0,3,3,1,3,3,3,1,3,3,0,3,3,3,3],
+    [1,1,1,1,0,1,3,1,1,1,1,1,3,1,0,1,1,1,1],
+    [3,3,3,1,0,1,3,3,3,3,3,3,3,1,0,1,3,3,3],
+    [1,1,1,1,0,1,3,1,1,1,1,1,3,1,0,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+    [1,2,0,1,0,0,0,0,0,3,0,0,0,0,0,1,0,2,1],
+    [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
+    [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+    [1,0,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
 let pellets = [];
-for(let row=0; row < map.length; row++) {
-    for(let col=0; col < map[row].length; col++) {
-        if(map[row][col] === 0) pellets.push({x: col * TILE_SIZE + 10, y: row * TILE_SIZE + 10});
-    }
-}
+layout.forEach((row, r) => {
+    row.forEach((cell, c) => {
+        if(cell === 0 || cell === 2) pellets.push({x: c, y: r, type: cell});
+    });
+});
 
-let playerGhost = { x: 200, y: 150, dirX: 0, dirY: 0, color: 'red' };
-let botPacman = { x: 30, y: 30, dirX: 0, dirY: 0, color: 'yellow' };
+// Character Setup
+let pacman = { x: 9, y: 15, dir: {x:0, y:0}, nextDir: {x:0, y:0}, speed: 0.12, state: 'NORMAL', timer: 0 };
+let ghosts = [
+    { name: 'Blinky', x: 9, y: 7, color: '#FF0000', dir: {x:0, y:0}, isPlayer: true },
+    { name: 'Pinky',  x: 8, y: 9, color: '#FFB8FF', dir: {x:0, y:0}, isPlayer: false },
+    { name: 'Inky',   x: 9, y: 9, color: '#00FFFF', dir: {x:0, y:0}, isPlayer: false },
+    { name: 'Clyde',  x: 10,y: 9, color: '#FFB852', dir: {x:0, y:0}, isPlayer: false }
+];
 
-// --- INPUT CONTROL (PLAYER AS GHOST) ---
+// Input for Player (Blinky)
 window.addEventListener('keydown', (e) => {
-    if(e.key === 'ArrowUp')    { playerGhost.dirX = 0;  playerGhost.dirY = -SPEED; }
-    if(e.key === 'ArrowDown')  { playerGhost.dirX = 0;  playerGhost.dirY = SPEED;  }
-    if(e.key === 'ArrowLeft')  { playerGhost.dirX = -SPEED; playerGhost.dirY = 0;  }
-    if(e.key === 'ArrowRight') { playerGhost.dirX = SPEED;  playerGhost.dirY = 0;  }
+    let p = ghosts[0];
+    if(e.key === 'ArrowUp')    p.nextDir = {x:0, y:-1};
+    if(e.key === 'ArrowDown')  p.nextDir = {x:0, y:1};
+    if(e.key === 'ArrowLeft')  p.nextDir = {x:-1, y:0};
+    if(e.key === 'ArrowRight') p.nextDir = {x:1, y:0};
 });
 
 function isWall(x, y) {
-    let col = Math.floor(x / TILE_SIZE);
-    let row = Math.floor(y / TILE_SIZE);
-    return map[row] && map[row][col] === 1;
+    let nx = Math.round(x);
+    let ny = Math.round(y);
+    return layout[ny] && layout[ny][nx] === 1;
 }
 
-// --- PAC-MAN AI LOGIC ---
-function updatePacmanAI() {
-    let dx = playerGhost.x - botPacman.x;
-    let dy = playerGhost.y - botPacman.y;
-    let distToGhost = Math.sqrt(dx*dx + dy*dy);
-
-    if (distToGhost < 80) {
-        // FLEE MODE: Move away from Red Ghost
-        if (Math.abs(dx) > Math.abs(dy)) {
-            botPacman.dirX = dx > 0 ? -SPEED : SPEED;
-            botPacman.dirY = 0;
-        } else {
-            botPacman.dirX = 0;
-            botPacman.dirY = dy > 0 ? -SPEED : SPEED;
+function moveActor(a) {
+    // Snap to grid for turning
+    if(Number.isInteger(a.x * 1) && Number.isInteger(a.y * 1)) {
+        if(a.nextDir && !isWall(a.x + a.nextDir.x, a.y + a.nextDir.y)) {
+            a.dir = a.nextDir;
         }
-    } else {
-        // HUNT MODE: Move toward first pellet in list
-        if (pellets.length > 0) {
-            let target = pellets[0];
-            if (botPacman.x < target.x) botPacman.dirX = SPEED;
-            else if (botPacman.x > target.x) botPacman.dirX = -SPEED;
-            else botPacman.dirX = 0;
-
-            if (botPacman.y < target.y) botPacman.dirY = SPEED;
-            else if (botPacman.y > target.y) botPacman.dirY = -SPEED;
-            else botPacman.dirY = 0;
+        if(isWall(a.x + a.dir.x, a.y + a.dir.y)) {
+            a.dir = {x:0, y:0};
         }
     }
-
-    // Collision check for AI
-    if (!isWall(botPacman.x + botPacman.dirX, botPacman.y + botPacman.dirY)) {
-        botPacman.x += botPacman.dirX;
-        botPacman.y += botPacman.dirY;
-    }
-}
-
-function gameLoop() {
-    // Update Player (Ghost)
-    if (!isWall(playerGhost.x + playerGhost.dirX, playerGhost.y + playerGhost.dirY)) {
-        playerGhost.x += playerGhost.dirX;
-        playerGhost.y += playerGhost.dirY;
-    }
-
-    // Update Bot (Pacman)
-    updatePacmanAI();
-
-    // Pacman eats pellets
-    pellets = pellets.filter(p => {
-        let d = Math.sqrt(Math.pow(p.x - botPacman.x, 2) + Math.pow(p.y - botPacman.y, 2));
-        return d > 10;
-    });
-    pelletDisplay.innerText = pellets.length;
-
-    // Check Win/Loss
-    let distMatch = Math.sqrt(Math.pow(playerGhost.x - botPacman.x, 2) + Math.pow(playerGhost.y - botPacman.y, 2));
-    if (distMatch < 15) {
-        alert("YOU CAUGHT HIM! YOU WIN!");
-        location.reload();
-        return;
-    }
-    if (pellets.length === 0) {
-        alert("PAC-MAN ATE EVERYTHING! YOU LOSE!");
-        location.reload();
-        return;
-    }
-
-    // Draw Everything
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    a.x += a.dir.x * (a.speed || 0.1);
+    a.y += a.dir.y * (a.speed || 0.1);
     
-    // Draw Map
-    for(let r=0; r<map.length; r++) {
-        for(let c=0; c<map[r].length; c++) {
-            if(map[r][c] === 1) {
-                ctx.fillStyle = 'blue';
-                ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    // Bounds wrapping
+    if(a.x < 0) a.x = MAP_WIDTH-1;
+    if(a.x > MAP_WIDTH-1) a.x = 0;
+}
+
+function updateAI() {
+    // --- PAC-MAN BRAIN ---
+    if(pacman.state === 'POWERED') {
+        statusText.innerText = "RUN!!";
+        statusText.style.color = "#00ffff";
+        // Target closest ghost
+        let target = ghosts[0];
+        let minDist = 999;
+        ghosts.forEach(g => {
+            let d = Math.hypot(g.x-pacman.x, g.y-pacman.y);
+            if(d < minDist) { minDist = d; target = g; }
+        });
+        if(pacman.x < target.x) pacman.nextDir = {x:1, y:0};
+        else pacman.nextDir = {x:-1, y:0};
+        
+        pacman.timer--;
+        if(pacman.timer <= 0) pacman.state = 'NORMAL';
+    } else {
+        statusText.innerText = "HUNTING";
+        statusText.style.color = "#ff0000";
+        // Find closest pellet
+        if(pellets.length > 0) {
+            let p = pellets[0];
+            if(Math.abs(p.x - pacman.x) > Math.abs(p.y - pacman.y)) {
+                pacman.nextDir = {x: p.x > pacman.x ? 1 : -1, y:0};
+            } else {
+                pacman.nextDir = {x:0, y: p.y > pacman.y ? 1 : -1};
             }
         }
     }
+    moveActor(pacman);
 
-    // Draw Pellets
-    ctx.fillStyle = 'white';
-    pellets.forEach(p => ctx.fillRect(p.x-2, p.y-2, 4, 4));
+    // --- OTHER GHOSTS BRAIN ---
+    ghosts.forEach((g, i) => {
+        if(i === 0) { moveActor(g); return; } // Blinky is you
+        // Simple random movement for others
+        if(Math.random() < 0.05 || g.dir.x === 0 && g.dir.y === 0) {
+            let dirs = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+            g.nextDir = dirs[Math.floor(Math.random()*4)];
+        }
+        moveActor(g);
+    });
 
-    // Draw Characters
-    ctx.fillStyle = 'yellow'; // Pacman
-    ctx.beginPath(); ctx.arc(botPacman.x, botPacman.y, 8, 0, Math.PI*2); ctx.fill();
+    // Pellet eating
+    pellets = pellets.filter(p => {
+        let d = Math.hypot(p.x - pacman.x, p.y - pacman.y);
+        if(d < 0.5) {
+            if(p.type === 2) { pacman.state = 'POWERED'; pacman.timer = 360; } // 6 seconds at 60fps
+            return false;
+        }
+        return true;
+    });
 
-    ctx.fillStyle = 'red'; // You
-    ctx.fillRect(playerGhost.x-8, playerGhost.y-8, 16, 16);
-
-    requestAnimationFrame(gameLoop);
+    // Collision
+    ghosts.forEach(g => {
+        if(Math.hypot(g.x - pacman.x, g.y - pacman.y) < 0.6) {
+            if(pacman.state === 'POWERED') {
+                alert("Pac-Man ate " + g.name + "! Game Over.");
+                location.reload();
+            } else if(g.isPlayer) {
+                alert("You caught him! Ghost Victory!");
+                location.reload();
+            }
+        }
+    });
 }
 
-gameLoop();
+function draw() {
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Maze
+    layout.forEach((row, r) => {
+        row.forEach((cell, c) => {
+            if(cell === 1) {
+                ctx.strokeStyle = '#2222ff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(c*TILE+4, r*TILE+4, TILE-8, TILE-8);
+            }
+        });
+    });
+
+    // Pellets
+    pellets.forEach(p => {
+        ctx.fillStyle = p.type === 2 ? '#ffb8ff' : '#ffb8ae';
+        let size = p.type === 2 ? 6 : 2;
+        ctx.beginPath();
+        ctx.arc(p.x*TILE + TILE/2, p.y*TILE + TILE/2, size, 0, Math.PI*2);
+        ctx.fill();
+    });
+
+    // Characters
+    ctx.fillStyle = pacman.state === 'POWERED' ? '#fff' : 'yellow';
+    ctx.beginPath(); ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, TILE/2-2, 0, Math.PI*2); ctx.fill();
+
+    ghosts.forEach(g => {
+        ctx.fillStyle = (pacman.state === 'POWERED') ? '#2121ff' : g.color;
+        // Basic Ghost Shape
+        ctx.beginPath();
+        ctx.arc(g.x*TILE+TILE/2, g.y*TILE+TILE/2-2, TILE/2-4, Math.PI, 0);
+        ctx.lineTo(g.x*TILE+TILE-4, g.y*TILE+TILE-2);
+        ctx.lineTo(g.x*TILE+4, g.y*TILE+TILE-2);
+        ctx.fill();
+        // Eyes
+        ctx.fillStyle = 'white';
+        ctx.fillRect(g.x*TILE+TILE/2-6, g.y*TILE+TILE/2-6, 4, 4);
+        ctx.fillRect(g.x*TILE+TILE/2+2, g.y*TILE+TILE/2-6, 4, 4);
+    });
+
+    updateAI();
+    requestAnimationFrame(draw);
+}
+
+draw();
 </script>
 </body>
 </html>
