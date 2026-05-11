@@ -1,63 +1,71 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>THE MAZE: TWO STALKERS</title>
+    <title>MAZE RUNNER: THE STALKERS</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: black; font-family: 'Courier New', monospace; }
-        #ui { position: absolute; top: 15px; left: 15px; color: red; text-shadow: 2px 2px black; pointer-events: none; z-index: 10; }
-        #hold-still { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 32px; display: none; text-align: center; }
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ff3333; text-shadow: 2px 2px black; pointer-events: none; z-index: 10; }
+        #hold-still { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 32px; display: none; text-align: center; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px; }
         #msg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: red; display: none; align-items: center; justify-content: center; z-index: 20; }
+        .hint { color: #aaa; font-size: 14px; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h2>STALKER 1: <span id="s1-status">WANDERING</span></h2>
-        <h2>STALKER 2: <span id="s2-status">WANDERING</span></h2>
-        <p><b>CLICK SCREEN TO START</b> | WASD: MOVE</p>
+        <h2>STALKER 1: <span id="s1-status">SEARCHING</span></h2>
+        <h2>STALKER 2: <span id="s2-status">SEARCHING</span></h2>
+        <p class="hint"><b>F:</b> FLASHLIGHT | <b>SHIFT:</b> SPRINT | <b>WASD:</b> MOVE</p>
+        <p class="hint">CLICK TO START</p>
     </div>
-    <div id="hold-still"><h1>HOLD STILL!</h1><p>SECONDS LEFT: <span id="sec">10</span></p></div>
-    <div id="msg"><h1>THEY FOUND YOU.</h1></div>
+    <div id="hold-still"><h1>FREEZE!</h1><p>HOLD STILL FOR: <span id="sec">10</span>s</p></div>
+    <div id="msg"><h1>THEY CAUGHT YOU</h1></div>
 
     <script src="https://unpkg.com"></script>
     <script>
+        // --- CORE ENGINE ---
         const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020202);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- FLASHLIGHT & CAMERA LIGHT ---
+        // --- LIGHTING SYSTEM (THE FIX) ---
+        // 1. Safety Light (Attached to player, always a bit of light)
+        const safetyLight = new THREE.PointLight(0xffffff, 0.5, 15);
+        camera.add(safetyLight);
+
+        // 2. High-Power Flashlight (F Key)
+        const flashlight = new THREE.SpotLight(0xffffff, 0, 80, 0.45, 0.3, 1);
         const lightTarget = new THREE.Object3D();
         lightTarget.position.set(0, 0, -1);
         camera.add(lightTarget);
+        camera.add(flashlight);
+        flashlight.target = lightTarget;
         scene.add(camera);
 
-        // Main Flashlight (SpotLight)
-        const flashlight = new THREE.SpotLight(0xffffff, 8, 60, 0.5, 0.4);
-        flashlight.target = lightTarget;
-        camera.add(flashlight);
+        // 3. Ambient (So walls aren't invisible)
+        scene.add(new THREE.AmbientLight(0x111111));
 
-        // Backup Light (PointLight) so you are NEVER in total darkness
-        const backUpLight = new THREE.PointLight(0xffffff, 1, 15);
-        camera.add(backUpLight);
-
-        // --- MAZE ---
-        const mazeSize = 35, wallSize = 6;
+        // --- WORLD BUILDING ---
+        const mazeSize = 40, wallSize = 8;
         const walls = [];
-        const wallMat = new THREE.MeshPhongMaterial({color: 0x111111});
-        const wallGeo = new THREE.BoxGeometry(wallSize, 10, wallSize);
+        const wallMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+        const wallGeo = new THREE.BoxGeometry(wallSize, 12, wallSize);
 
         for(let x=0; x<mazeSize; x++) {
             for(let z=0; z<mazeSize; z++) {
                 if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || Math.random() > 0.88) {
                     const wall = new THREE.Mesh(wallGeo, wallMat);
-                    wall.position.set(x*wallSize - 100, 5, z*wallSize - 100);
+                    wall.position.set(x*wallSize - 160, 6, z*wallSize - 160);
                     scene.add(wall);
                     walls.push(wall);
                 }
             }
         }
-        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshPhongMaterial({color: 0x050505})).rotateX(-Math.PI/2));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({color: 0x0a0a0a}));
+        floor.rotation.x = -Math.PI/2;
+        scene.add(floor);
 
         // --- MONSTERS ---
         const loader = new THREE.TextureLoader();
@@ -66,34 +74,44 @@
 
         function makeMonster(tex, x, z) {
             const m = new THREE.Sprite(new THREE.SpriteMaterial({map: tex}));
-            m.scale.set(5, 8, 1);
-            m.position.set(x, 4, z);
-            m.userData = { state: "WANDER", target: new THREE.Vector3(x, 4, z), stillStart: 0 };
+            m.scale.set(6, 10, 1);
+            m.position.set(x, 5, z);
+            m.userData = { state: "WANDER", target: new THREE.Vector3(x, 5, z), timer: 0 };
             scene.add(m);
             return m;
         }
+        const monsters = [makeMonster(m1Tex, 40, 40), makeMonster(m2Tex, -40, -40)];
 
-        const monsters = [makeMonster(m1Tex, 20, 20), makeMonster(m2Tex, -20, -20)];
+        // --- PLAYER & INPUTS ---
+        let yaw = 0, pitch = 0, playerPos = new THREE.Vector3(-140, 2, -140);
+        let flashOn = false;
+        const keys = {};
 
-        // --- GAMEPLAY ---
-        let yaw = 0, pitch = 0, playerPos = new THREE.Vector3(-80, 1.6, -80);
         document.body.addEventListener('click', () => renderer.domElement.requestPointerLock());
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if(e.code === 'KeyF') { flashOn = !flashOn; flashlight.intensity = flashOn ? 10 : 0; }
+        });
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
         document.addEventListener('mousemove', (e) => {
-            if(document.pointerLockElement) { yaw -= e.movementX*0.002; pitch -= e.movementY*0.002; pitch = Math.max(-1, Math.min(1, pitch)); }
+            if(document.pointerLockElement) {
+                yaw -= e.movementX*0.002; pitch -= e.movementY*0.002;
+                pitch = Math.max(-1.2, Math.min(1.2, pitch));
+            }
         });
 
-        const keys = {};
-        window.addEventListener('keydown', (e) => keys[e.code] = true);
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
-
+        // --- GAME LOOP ---
         function animate() {
             requestAnimationFrame(animate);
-            let isMoving = (keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']);
+            
+            // Movement Logic
+            const isMoving = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
+            const speed = keys['ShiftLeft'] ? 0.35 : 0.18;
             
             if(isMoving) {
                 const move = new THREE.Vector3();
-                if(keys['KeyW']) move.z -= 0.15; if(keys['KeyS']) move.z += 0.15;
-                if(keys['KeyA']) move.x -= 0.15; if(keys['KeyD']) move.x += 0.15;
+                if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
+                if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
                 move.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
                 playerPos.add(move);
             }
@@ -101,30 +119,40 @@
             camera.position.copy(playerPos);
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
-            let anyDetect = false;
+            // Monster Logic
+            let activeFreeze = false;
             monsters.forEach((m, i) => {
                 const dist = m.position.distanceTo(playerPos);
                 const status = document.getElementById(`s${i+1}-status`);
 
                 if(m.userData.state === "WANDER") {
-                    status.innerText = "WANDERING";
-                    if(m.position.distanceTo(m.userData.target) < 2) {
-                        m.userData.target.set((Math.random()-0.5)*180, 4, (Math.random()-0.5)*180);
+                    status.innerText = "SEARCHING";
+                    if(m.position.distanceTo(m.userData.target) < 3) {
+                        m.userData.target.set((Math.random()-0.5)*300, 5, (Math.random()-0.5)*300);
                     }
-                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.06));
-                    if(dist < 18) { m.userData.state = "DETECTED"; m.userData.stillStart = Date.now(); }
+                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.08));
+                    
+                    // Vision Check: They don't know where you are until they see you (close distance)
+                    if(dist < 25) { m.userData.state = "CHASE"; m.userData.timer = Date.now(); }
                 } 
-                else if(m.userData.state === "DETECTED") {
-                    anyDetect = true;
-                    status.innerText = "HE SEES YOU!";
-                    let left = 10 - Math.floor((Date.now() - m.userData.stillStart)/1000);
-                    document.getElementById('sec').innerText = Math.max(0, left);
-                    if(isMoving) { document.getElementById('msg').style.display='flex'; setTimeout(()=>location.reload(), 2000); }
-                    if(left <= 0) { m.userData.state = "WANDER"; m.position.set((Math.random()-0.5)*150, 4, (Math.random()-0.5)*150); }
+                else if(m.userData.state === "CHASE") {
+                    activeFreeze = true;
+                    status.innerText = "SIGHTED!";
+                    let elapsed = Math.floor((Date.now() - m.userData.timer)/1000);
+                    document.getElementById('sec').innerText = 10 - elapsed;
+
+                    if(isMoving) { // Death if moving
+                        document.getElementById('msg').style.display='flex';
+                        setTimeout(()=>location.reload(), 2500);
+                    }
+                    if(elapsed >= 10) { // Safety reset
+                        m.userData.state = "WANDER";
+                        m.position.set((Math.random()-0.5)*250, 5, (Math.random()-0.5)*250);
+                    }
                 }
             });
 
-            document.getElementById('hold-still').style.display = anyDetect ? 'block' : 'none';
+            document.getElementById('hold-still').style.display = activeFreeze ? 'block' : 'none';
             renderer.render(scene, camera);
         }
         animate();
