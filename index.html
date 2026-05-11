@@ -1,104 +1,141 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MAZE SURVIVAL</title>
+    <title>THE MAZE: FIRST PERSON</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #222; font-family: sans-serif; }
-        canvas { display: block; background: #000; margin: auto; border: 5px solid #444; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 5px; }
-        #freeze { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: yellow; font-size: 60px; font-weight: bold; display: none; text-align: center; }
+        body { margin: 0; overflow: hidden; background-color: black; font-family: 'Arial', sans-serif; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; z-index: 100; pointer-events: none; }
+        #freeze-warning { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: red; font-size: 45px; font-weight: bold; display: none; text-align: center; text-shadow: 3px 3px black; }
+        #game-over { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: red; display: none; align-items: center; justify-content: center; z-index: 200; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <b>WASD:</b> Move | <b>SHIFT:</b> Run<br>
-        <span style="color: #ff4444;"><b>RED DOTS:</b> MONSTERS (FREEZE IF THEY GET CLOSE!)</span>
+        <b>WASD:</b> Move | <b>Shift:</b> Sprint<br>
+        <b>STATUS:</b> <span id="status">SAFE</span><br>
+        <i>STILLNESS TIMER: <span id="timer">10</span>s</i>
     </div>
-    <div id="freeze">FREEZE!<br><span id="timer">10</span></div>
-    <canvas id="gameCanvas"></canvas>
+    <div id="freeze-warning">DON'T MOVE!</div>
+    <div id="game-over"><h1>CAUGHT.</h1></div>
 
+    <script src="https://cloudflare.com"></script>
     <script>
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.Fog(0x050505, 1, 60);
 
-        // --- GAME SETTINGS ---
-        let player = { x: canvas.width/2, y: canvas.height/2, size: 15, speed: 3 };
-        let monsters = [
-            { x: 100, y: 100, size: 20, color: "red", state: "WANDER", timer: 0 },
-            { x: canvas.width - 100, y: canvas.height - 100, size: 20, color: "red", state: "WANDER", timer: 0 }
-        ];
-        
-        // --- WALL DATA ---
-        let walls = [];
-        for(let i=0; i<15; i++) {
-            walls.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, w: 100, h: 20 });
-            walls.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, w: 20, h: 100 });
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- POWERFUL LIGHTING ---
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const headlamp = new THREE.PointLight(0xffffff, 1, 30);
+        camera.add(headlamp);
+        scene.add(camera);
+
+        // --- MAZE ---
+        const mazeSize = 30, wallSize = 8;
+        const wallMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
+        const wallGeo = new THREE.BoxGeometry(wallSize, 12, wallSize);
+
+        for(let x=0; x<mazeSize; x++) {
+            for(let z=0; z<mazeSize; z++) {
+                if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || (x%4==0 && z%4==0)) {
+                    const wall = new THREE.Mesh(wallGeo, wallMat);
+                    wall.position.set(x*wallSize - 120, 6, z*wallSize - 120);
+                    scene.add(wall);
+                }
+            }
         }
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshPhongMaterial({color: 0x050505})).rotateX(-Math.PI/2));
 
+        // --- MONSTERS WITH YOUR IMAGES ---
+        const loader = new THREE.TextureLoader();
+        const monsterImgs = [
+            'https://deepai.org', // Skull
+            'https://deepai.org'  // Black Face
+        ];
+
+        function makeMonster(imgUrl, x, z) {
+            const tex = loader.load(imgUrl);
+            const mat = new THREE.SpriteMaterial({ map: tex });
+            const s = new THREE.Sprite(mat);
+            s.scale.set(6, 10, 1);
+            s.position.set(x, 5, z);
+            s.userData = { state: "WANDER", target: new THREE.Vector3(x, 5, z), stillTimer: 0 };
+            scene.add(s);
+            return s;
+        }
+        const monsters = [makeMonster(monsterImgs[0], 40, 40), makeMonster(monsterImgs[1], -40, -40)];
+
+        // --- CONTROLS ---
+        let yaw = 0, pitch = 0, playerPos = new THREE.Vector3(-100, 2, -100);
         const keys = {};
-        window.addEventListener("keydown", (e) => keys[e.code] = true);
-        window.addEventListener("keyup", (e) => keys[e.code] = false);
+        document.body.addEventListener('click', () => renderer.domElement.requestPointerLock());
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+        document.addEventListener('mousemove', (e) => {
+            if(document.pointerLockElement) {
+                yaw -= e.movementX*0.003; pitch -= e.movementY*0.003;
+                pitch = Math.max(-1.2, Math.min(1.2, pitch));
+            }
+        });
 
-        function update() {
-            let moving = false;
-            let currentSpeed = keys['ShiftLeft'] ? player.speed * 2 : player.speed;
+        // --- GAME LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const isMoving = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
+            const speed = keys['ShiftLeft'] ? 0.4 : 0.2;
+            
+            if(isMoving) {
+                const move = new THREE.Vector3();
+                if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
+                if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
+                move.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+                playerPos.add(move);
+            }
 
-            if (keys['KeyW']) { player.y -= currentSpeed; moving = true; }
-            if (keys['KeyS']) { player.y += currentSpeed; moving = true; }
-            if (keys['KeyA']) { player.x -= currentSpeed; moving = true; }
-            if (keys['KeyD']) { player.x += currentSpeed; moving = true; }
+            camera.position.copy(playerPos);
+            camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
-            // Monster Logic
-            let nearMonster = false;
-            monsters.forEach(m => {
-                let dx = player.x - m.x;
-                let dy = player.y - m.y;
-                let dist = Math.sqrt(dx*dx + dy*dy);
+            let detected = false;
+            monsters.forEach((m) => {
+                const dist = m.position.distanceTo(playerPos);
+                
+                if(m.userData.state === "WANDER") {
+                    if(m.position.distanceTo(m.userData.target) < 4) {
+                        m.userData.target.set((Math.random()-0.5)*200, 5, (Math.random()-0.5)*200);
+                    }
+                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.08));
+                    if(dist < 25) { m.userData.state = "SPOTTED"; m.userData.stillTimer = Date.now(); }
+                } 
+                else if(m.userData.state === "SPOTTED") {
+                    detected = true;
+                    let elapsed = Math.floor((Date.now() - m.userData.stillTimer)/1000);
+                    document.getElementById('timer').innerText = 10 - elapsed;
 
-                if (dist < 150) {
-                    nearMonster = true;
-                    if (moving) {
-                        alert("YOU MOVED! RESTARTING...");
-                        location.reload();
+                    if(isMoving) { // CHARGE IF YOU MOVE
+                        m.position.add(new THREE.Vector3().subVectors(playerPos, m.position).normalize().multiplyScalar(0.5));
+                    }
+
+                    if(dist < 2) { 
+                        document.getElementById('game-over').style.display='flex';
+                        setTimeout(()=>location.reload(), 2500); 
+                    }
+                    if(elapsed >= 10) { 
+                        m.userData.state = "WANDER"; 
+                        m.position.set((Math.random()-0.5)*180, 5, (Math.random()-0.5)*180);
                     }
                 }
-
-                // Simple Wander
-                m.x += (Math.random() - 0.5) * 4;
-                m.y += (Math.random() - 0.5) * 4;
             });
 
-            document.getElementById("freeze").style.display = nearMonster ? "block" : "none";
-            draw();
-            requestAnimationFrame(update);
+            document.getElementById('status').innerText = detected ? "SPOTTED!" : "SAFE";
+            document.getElementById('freeze-warning').style.display = detected ? 'block' : 'none';
+            renderer.render(scene, camera);
         }
-
-        function draw() {
-            ctx.fillStyle = "black";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw Walls (Green)
-            ctx.fillStyle = "#2e7d32";
-            walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
-
-            // Draw Monsters (Red)
-            monsters.forEach(m => {
-                ctx.fillStyle = m.color;
-                ctx.beginPath();
-                ctx.arc(m.x, m.y, m.size, 0, Math.PI*2);
-                ctx.fill();
-            });
-
-            // Draw Player (White)
-            ctx.fillStyle = "white";
-            ctx.beginPath();
-            ctx.arc(player.x, player.y, player.size, 0, Math.PI*2);
-            ctx.fill();
-        }
-
-        update();
+        animate();
     </script>
 </body>
 </html>
