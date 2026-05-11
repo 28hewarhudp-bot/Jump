@@ -2,61 +2,72 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sign Man Smash</title>
+    <title>Sign Man Showdown</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #87CEEB; font-family: sans-serif; overflow: hidden; }
-        canvas { background-color: #87CEEB; border: 4px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.3); }
-        .ui { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; font-size: 24px; font-weight: bold; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #4a3728; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        canvas { background-color: #87CEEB; border: 10px solid #fff; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        .ui { position: absolute; top: 30px; width: 100%; display: flex; justify-content: space-around; font-size: 32px; color: white; pointer-events: none; text-shadow: 3px 3px #000; }
     </style>
 </head>
 <body>
     <div class="ui">
-        <div id="p1-stats">P1: 0%</div>
-        <div id="p2-stats">P2: 0%</div>
+        <div id="p1-ui">P1: ❤️❤️❤️</div>
+        <div id="p2-ui">P2: ❤️❤️❤️</div>
     </div>
     <canvas id="gameCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = 800;
-        canvas.height = 600;
+        canvas.width = 1000;
+        canvas.height = 700;
 
-        const gravity = 0.5;
+        const gravity = 0.6;
+        let weapons = [];
+        let frameCount = 0;
 
         class Player {
             constructor(x, y, id, controls) {
                 this.x = x; this.y = y;
-                this.width = 40; this.height = 60;
+                this.w = 50; this.h = 80;
                 this.dx = 0; this.dy = 0;
-                this.onGround = false;
                 this.id = id;
                 this.controls = controls;
-                this.damage = 0;
+                this.lives = 3;
                 this.hasWeapon = false;
+                this.facing = id === 1 ? 1 : -1;
+                this.animFrame = 0; // For Game & Watch jerky movement
             }
 
             draw() {
-                ctx.strokeStyle = "black";
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                // Draw "Sign Man" head
-                ctx.arc(this.x + 20, this.y + 10, 8, 0, Math.PI * 2);
-                // Body
-                ctx.moveTo(this.x + 20, this.y + 18); ctx.lineTo(this.x + 20, this.y + 40);
+                ctx.save();
+                ctx.translate(this.x + this.w/2, this.y + this.h/2);
+                if (this.facing === -1) ctx.scale(-1, 1);
+
+                ctx.fillStyle = "white";
+                // Head
+                ctx.beginPath(); ctx.arc(0, -30, 12, 0, Math.PI * 2); ctx.fill();
+                
+                // Jerky "Game & Watch" Style Animation
+                let offset = (Math.abs(this.dx) > 0.1) ? (Math.floor(frameCount / 10) % 2) * 10 : 0;
+                
+                // Body & Legs
+                ctx.fillRect(-10, -15, 20, 35); // Torso
+                ctx.fillRect(-15 + offset, 20, 12, 20); // Leg 1
+                ctx.fillRect(5 - offset, 20, 12, 20);  // Leg 2
+                
                 // Arms
-                ctx.moveTo(this.x + 20, this.y + 25); ctx.lineTo(this.x + 5, this.y + 35);
-                ctx.moveTo(this.x + 20, this.y + 25); ctx.lineTo(this.x + 35, this.y + 35);
-                // Legs
-                ctx.moveTo(this.x + 20, this.y + 40); ctx.lineTo(this.x + 10, this.y + 60);
-                ctx.moveTo(this.x + 20, this.y + 40); ctx.lineTo(this.x + 30, this.y + 60);
-                ctx.stroke();
+                ctx.fillRect(10, -10, 20, 10); // Arm
 
                 if (this.hasWeapon) {
+                    // Draw Stop Sign Weapon
                     ctx.fillStyle = "red";
-                    ctx.beginPath(); ctx.arc(this.x + 40, this.y + 25, 12, 0, Math.PI * 2); ctx.fill();
-                    ctx.fillStyle = "white"; ctx.font = "8px Arial"; ctx.fillText("STOP", this.x + 30, this.y + 28);
+                    ctx.beginPath(); ctx.moveTo(25, -20);
+                    for(let i=0; i<8; i++) ctx.lineTo(25 + 25*Math.cos(i*Math.PI/4), -40 + 25*Math.sin(i*Math.PI/4));
+                    ctx.fill();
+                    ctx.fillStyle = "white"; ctx.font = "bold 10px Arial"; ctx.fillText("STOP", 12, -37);
                 }
+                ctx.restore();
             }
 
             update() {
@@ -64,65 +75,91 @@
                 this.x += this.dx;
                 this.y += this.dy;
 
-                // Collision with the "Yellow Sign" platform
-                if (this.y + this.height > 450 && this.x > 250 && this.x < 550 && this.dy > 0) {
-                    this.y = 450 - this.height;
+                // Stage Collision (Bigger Arena)
+                if (this.y + this.h > 550 && this.x > 150 && this.x < 850 && this.dy > 0) {
+                    this.y = 550 - this.h;
                     this.dy = 0;
                     this.onGround = true;
                 } else { this.onGround = false; }
 
-                // KO logic
-                if (this.x < -50 || this.x > 850 || this.y > 650) {
-                    this.x = this.id === 1 ? 300 : 500;
-                    this.y = 200;
-                    this.damage = 0;
-                    updateUI();
-                }
+                // Borders
+                if (this.x < 0) this.x = 0; if (this.x > canvas.width - this.w) this.x = canvas.width - this.w;
+
+                // Pick up weapon
+                weapons.forEach((w, i) => {
+                    if (Math.abs(this.x - w.x) < 40 && Math.abs(this.y - w.y) < 40) {
+                        if ((this.id === 1 && keys[this.controls.pick]) || (this.id === 2 && keys[this.controls.pick])) {
+                            this.hasWeapon = true;
+                            weapons.splice(i, 1);
+                        }
+                    }
+                });
             }
         }
 
-        const p1 = new Player(300, 200, 1, { left: 'a', right: 'd', jump: ' ', attack: 'f', pick: 'e' });
-        const p2 = new Player(500, 200, 2, { left: 'arrowleft', right: 'arrowright', jump: 'arrowup', attack: '2', pick: '1' });
+        const p1 = new Player(200, 400, 1, { left: 'a', right: 'd', jump: ' ', attack: 'f', pick: 'e' });
+        const p2 = new Player(750, 400, 2, { left: 'arrowleft', right: 'arrowright', jump: 'arrowup', attack: '2', pick: '1' });
 
         const keys = {};
         window.addEventListener('keydown', e => {
-            const key = e.key.toLowerCase();
-            keys[key] = true;
-            // Handling picking up weapons and attacking
-            if (key === p1.controls.pick) p1.hasWeapon = true;
-            if (key === p2.controls.pick) p2.hasWeapon = true;
-            if (key === p1.controls.attack && p1.hasWeapon) { p2.damage += 10; p2.dx = 10; updateUI(); }
-            if (key === p2.controls.attack && p2.hasWeapon) { p1.damage += 10; p1.dx = -10; updateUI(); }
+            let k = e.key.toLowerCase();
+            keys[k] = true;
+            
+            // Attack logic
+            if (k === p1.controls.attack && p1.hasWeapon && Math.abs(p1.x - p2.x) < 80) {
+                p2.lives--; p2.dx = 15; p2.dy = -10; p1.hasWeapon = false; updateUI();
+            }
+            if (k === p2.controls.attack && p2.hasWeapon && Math.abs(p2.x - p1.x) < 80) {
+                p1.lives--; p1.dx = -15; p1.dy = -10; p2.hasWeapon = false; updateUI();
+            }
         });
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
         function updateUI() {
-            document.getElementById('p1-stats').innerText = `P1: ${p1.damage}%`;
-            document.getElementById('p2-stats').innerText = `P2: ${p2.damage}%`;
+            document.getElementById('p1-ui').innerText = "P1: " + "❤️".repeat(Math.max(0, p1.lives));
+            document.getElementById('p2-ui').innerText = "P2: " + "❤️".repeat(Math.max(0, p2.lives));
+            if (p1.lives <= 0) alert("PLAYER 2 WINS!");
+            if (p2.lives <= 0) alert("PLAYER 1 WINS!");
         }
 
+        function spawnWeapon() {
+            weapons.push({ x: Math.random() * 600 + 200, y: -50, dy: 3 });
+        }
+
+        setInterval(spawnWeapon, 5000);
+
         function gameLoop() {
+            frameCount++;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw the "Walking Sign" stage
-            ctx.fillStyle = "#FFD700";
-            ctx.save();
-            ctx.translate(400, 450);
-            ctx.rotate(45 * Math.PI / 180);
-            ctx.fillRect(-150, -150, 300, 300);
-            ctx.restore();
+            // Draw Brown Sign Arena
+            ctx.fillStyle = "#5d4037"; // Brown background of the sign
+            ctx.beginPath();
+            ctx.roundRect(150, 450, 700, 150, 30);
+            ctx.fill();
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 10;
+            ctx.stroke();
 
-            // P1 Input
-            p1.dx = 0;
-            if (keys[p1.controls.left]) p1.dx = -5;
-            if (keys[p1.controls.right]) p1.dx = 5;
-            if (keys[p1.controls.jump] && p1.onGround) p1.dy = -12;
+            // Draw Weapons
+            ctx.fillStyle = "red";
+            weapons.forEach(w => {
+                w.y += w.dy;
+                if (w.y > 510) { w.y = 510; w.dy = 0; }
+                ctx.beginPath(); ctx.arc(w.x, w.y, 15, 0, Math.PI*2); ctx.fill();
+            });
 
-            // P2 Input
-            p2.dx = 0;
-            if (keys[p2.controls.left]) p2.dx = -5;
-            if (keys[p2.controls.right]) p2.dx = 5;
-            if (keys[p2.controls.jump] && p2.onGround) p2.dy = -12;
+            // Player 1 Movement
+            p1.dx *= 0.8;
+            if (keys[p1.controls.left]) { p1.dx = -6; p1.facing = -1; }
+            if (keys[p1.controls.right]) { p1.dx = 6; p1.facing = 1; }
+            if (keys[p1.controls.jump] && p1.onGround) p1.dy = -15;
+
+            // Player 2 Movement
+            p2.dx *= 0.8;
+            if (keys[p2.controls.left]) { p2.dx = -6; p2.facing = -1; }
+            if (keys[p2.controls.right]) { p2.dx = 6; p2.facing = 1; }
+            if (keys[p2.controls.jump] && p2.onGround) p2.dy = -15;
 
             p1.update(); p2.update();
             p1.draw(); p2.draw();
