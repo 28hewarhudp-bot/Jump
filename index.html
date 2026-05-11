@@ -1,97 +1,87 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MAZE RUNNER: THE STALKERS</title>
+    <title>THE DIM MAZE</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', monospace; }
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Courier New', monospace; }
         #ui { position: absolute; top: 20px; left: 20px; color: #ff3333; text-shadow: 2px 2px black; pointer-events: none; z-index: 10; }
-        #hold-still { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 32px; display: none; text-align: center; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px; }
+        #hold-still { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 32px; display: none; text-align: center; background: rgba(0,0,0,0.6); padding: 20px; border-radius: 10px; }
         #msg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: red; display: none; align-items: center; justify-content: center; z-index: 20; }
-        .hint { color: #aaa; font-size: 14px; }
+        .hint { color: #88ff88; font-size: 14px; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h2>STALKER 1: <span id="s1-status">SEARCHING</span></h2>
-        <h2>STALKER 2: <span id="s2-status">SEARCHING</span></h2>
-        <p class="hint"><b>F:</b> FLASHLIGHT | <b>SHIFT:</b> SPRINT | <b>WASD:</b> MOVE</p>
-        <p class="hint">CLICK TO START</p>
+        <h2>STALKER 1: <span id="s1-status">HIDDEN</span></h2>
+        <h2>STALKER 2: <span id="s2-status">HIDDEN</span></h2>
+        <p class="hint"><b>SHIFT:</b> SPRINT | <b>WASD:</b> MOVE | <b>MOUSE:</b> LOOK</p>
+        <p>DO NOT MOVE IF THEY SEE YOU.</p>
     </div>
-    <div id="hold-still"><h1>FREEZE!</h1><p>HOLD STILL FOR: <span id="sec">10</span>s</p></div>
-    <div id="msg"><h1>THEY CAUGHT YOU</h1></div>
+    <div id="hold-still"><h1>FREEZE!</h1><p>REMAIN STILL: <span id="sec">10</span>s</p></div>
+    <div id="msg"><h1>CAUGHT</h1></div>
 
     <script src="https://unpkg.com"></script>
     <script>
-        // --- CORE ENGINE ---
+        // --- 1. THE DIM WORLD SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x020202);
+        scene.background = new THREE.Color(0x050505);
+        // Dim Fog makes it hard to see far away, but clear nearby
+        scene.fog = new THREE.Fog(0x050505, 1, 60);
+
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- LIGHTING SYSTEM (THE FIX) ---
-        // 1. Safety Light (Attached to player, always a bit of light)
-        const safetyLight = new THREE.PointLight(0xffffff, 0.5, 15);
-        camera.add(safetyLight);
+        // Permanent Dim Lighting (No Flashlight needed)
+        const ambient = new THREE.AmbientLight(0x404040, 1.2); // Soft overall light
+        scene.add(ambient);
+        const moon = new THREE.DirectionalLight(0x4444ff, 0.5); // Blue tint moon
+        moon.position.set(10, 20, 10);
+        scene.add(moon);
 
-        // 2. High-Power Flashlight (F Key)
-        const flashlight = new THREE.SpotLight(0xffffff, 0, 80, 0.45, 0.3, 1);
-        const lightTarget = new THREE.Object3D();
-        lightTarget.position.set(0, 0, -1);
-        camera.add(lightTarget);
-        camera.add(flashlight);
-        flashlight.target = lightTarget;
-        scene.add(camera);
-
-        // 3. Ambient (So walls aren't invisible)
-        scene.add(new THREE.AmbientLight(0x111111));
-
-        // --- WORLD BUILDING ---
+        // --- 2. THE MAZE ---
         const mazeSize = 40, wallSize = 8;
         const walls = [];
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
-        const wallGeo = new THREE.BoxGeometry(wallSize, 12, wallSize);
+        const wallMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+        const wallGeo = new THREE.BoxGeometry(wallSize, 15, wallSize);
 
         for(let x=0; x<mazeSize; x++) {
             for(let z=0; z<mazeSize; z++) {
                 if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || Math.random() > 0.88) {
                     const wall = new THREE.Mesh(wallGeo, wallMat);
-                    wall.position.set(x*wallSize - 160, 6, z*wallSize - 160);
+                    wall.position.set(x*wallSize - 160, 7.5, z*wallSize - 160);
                     scene.add(wall);
                     walls.push(wall);
                 }
             }
         }
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({color: 0x0a0a0a}));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({color: 0x111111}));
         floor.rotation.x = -Math.PI/2;
         scene.add(floor);
 
-        // --- MONSTERS ---
+        // --- 3. THE MONSTERS ---
         const loader = new THREE.TextureLoader();
+        // Monster images from your previous turns
         const m1Tex = loader.load('https://deepai.org');
         const m2Tex = loader.load('https://deepai.org');
 
         function makeMonster(tex, x, z) {
             const m = new THREE.Sprite(new THREE.SpriteMaterial({map: tex}));
-            m.scale.set(6, 10, 1);
-            m.position.set(x, 5, z);
-            m.userData = { state: "WANDER", target: new THREE.Vector3(x, 5, z), timer: 0 };
+            m.scale.set(7, 11, 1);
+            m.position.set(x, 5.5, z);
+            m.userData = { state: "WANDER", target: new THREE.Vector3(x, 5.5, z), timer: 0 };
             scene.add(m);
             return m;
         }
-        const monsters = [makeMonster(m1Tex, 40, 40), makeMonster(m2Tex, -40, -40)];
+        const monsters = [makeMonster(m1Tex, 50, 50), makeMonster(m2Tex, -50, -50)];
 
-        // --- PLAYER & INPUTS ---
+        // --- 4. CONTROLS & MOVEMENT ---
         let yaw = 0, pitch = 0, playerPos = new THREE.Vector3(-140, 2, -140);
-        let flashOn = false;
         const keys = {};
 
         document.body.addEventListener('click', () => renderer.domElement.requestPointerLock());
-        window.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            if(e.code === 'KeyF') { flashOn = !flashOn; flashlight.intensity = flashOn ? 10 : 0; }
-        });
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
         document.addEventListener('mousemove', (e) => {
             if(document.pointerLockElement) {
@@ -100,13 +90,12 @@
             }
         });
 
-        // --- GAME LOOP ---
+        // --- 5. GAME ENGINE LOOP ---
         function animate() {
             requestAnimationFrame(animate);
             
-            // Movement Logic
             const isMoving = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
-            const speed = keys['ShiftLeft'] ? 0.35 : 0.18;
+            const speed = keys['ShiftLeft'] ? 0.4 : 0.2; // Shift to sprint
             
             if(isMoving) {
                 const move = new THREE.Vector3();
@@ -119,35 +108,35 @@
             camera.position.copy(playerPos);
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
-            // Monster Logic
             let activeFreeze = false;
             monsters.forEach((m, i) => {
                 const dist = m.position.distanceTo(playerPos);
                 const status = document.getElementById(`s${i+1}-status`);
 
                 if(m.userData.state === "WANDER") {
-                    status.innerText = "SEARCHING";
-                    if(m.position.distanceTo(m.userData.target) < 3) {
-                        m.userData.target.set((Math.random()-0.5)*300, 5, (Math.random()-0.5)*300);
+                    status.innerText = "HIDDEN";
+                    // Wander randomly
+                    if(m.position.distanceTo(m.userData.target) < 4) {
+                        m.userData.target.set((Math.random()-0.5)*280, 5.5, (Math.random()-0.5)*280);
                     }
-                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.08));
+                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.1));
                     
-                    // Vision Check: They don't know where you are until they see you (close distance)
-                    if(dist < 25) { m.userData.state = "CHASE"; m.userData.timer = Date.now(); }
+                    // Only find you if they see you (within 30 units)
+                    if(dist < 30) { m.userData.state = "CHASE"; m.userData.timer = Date.now(); }
                 } 
                 else if(m.userData.state === "CHASE") {
                     activeFreeze = true;
-                    status.innerText = "SIGHTED!";
+                    status.innerText = "HE SEES YOU!";
                     let elapsed = Math.floor((Date.now() - m.userData.timer)/1000);
                     document.getElementById('sec').innerText = 10 - elapsed;
 
-                    if(isMoving) { // Death if moving
+                    if(isMoving) { // Death for moving while sighted
                         document.getElementById('msg').style.display='flex';
-                        setTimeout(()=>location.reload(), 2500);
+                        setTimeout(()=>location.reload(), 2000);
                     }
-                    if(elapsed >= 10) { // Safety reset
+                    if(elapsed >= 10) { // Monster loses interest after 10s of stillness
                         m.userData.state = "WANDER";
-                        m.position.set((Math.random()-0.5)*250, 5, (Math.random()-0.5)*250);
+                        m.position.set((Math.random()-0.5)*250, 5.5, (Math.random()-0.5)*250);
                     }
                 }
             });
