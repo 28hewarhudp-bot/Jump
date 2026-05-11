@@ -1,18 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ghost Duel: Fix Pac-Man</title>
+    <title>Ghost Squad: Full Arcade Logic</title>
     <style>
         body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; }
-        .ui { margin-top: 20px; font-size: 24px; letter-spacing: 3px; }
+        .ui { margin-top: 10px; font-size: 20px; }
         canvas { background: #000; margin-top: 10px; border: 2px solid #333; }
         #status { font-weight: bold; }
-        .danger { color: #ff0000; animation: blink 0.5s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } }
     </style>
 </head>
 <body>
-    <div class="ui">STATUS: <span id="status">HUNTING</span></div>
+    <div class="ui">MODE: <span id="status">SCATTER</span></div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -34,7 +32,7 @@ const layout = [
     [1,1,1,1,0,1,1,1,3,1,3,1,1,1,0,1,1,1,1],
     [3,3,3,1,0,1,3,3,3,3,3,3,3,1,0,1,3,3,3],
     [1,1,1,1,0,1,3,1,1,3,1,1,3,1,0,1,1,1,1],
-    [3,3,3,3,0,3,3,1,3,3,3,1,3,3,0,3,3,3,3],
+    [0,0,0,0,0,3,3,1,3,3,3,1,3,3,0,0,0,0,0], // ROW 10: TELEPORT TUNNEL
     [1,1,1,1,0,1,3,1,1,1,1,1,3,1,0,1,1,1,1],
     [3,3,3,1,0,1,3,3,3,3,3,3,3,1,0,1,3,3,3],
     [1,1,1,1,0,1,3,1,1,1,1,1,3,1,0,1,1,1,1],
@@ -51,79 +49,76 @@ const layout = [
 let pellets = [];
 layout.forEach((row, y) => row.forEach((v, x) => { if(v===0 || v===2) pellets.push({x, y, v}); }));
 
-let player = { x: 9, y: 9, color: '#f00', dx: 0, dy: 0, next: {x:0, y:0}, respawn: 0 };
-let pacman = { x: 9, y: 15, dx: 0, dy: 0, state: 'HUNT', timer: 0, anim: 0 };
-let frameCount = 0;
+let ghosts = [
+    { name: 'Blinky', x: 9, y: 7, color: '#f00', dx: 1, dy: 0, home: {x: 18, y: 0} },
+    { name: 'Pinky', x: 9, y: 9, color: '#ffb8ff', dx: -1, dy: 0, home: {x: 0, y: 0} },
+    { name: 'Inky', x: 8, y: 9, color: '#0ff', dx: 0, dy: -1, home: {x: 18, y: 20} },
+    { name: 'Clyde', x: 10, y: 9, color: '#ffb852', dx: 0, dy: 1, home: {x: 0, y: 20} }
+];
 
-window.addEventListener('keydown', (e) => {
-    if(player.respawn > 0) return;
-    if(e.key === 'ArrowUp')    player.next = {x:0, y:-1};
-    if(e.key === 'ArrowDown')  player.next = {x:0, y:1};
-    if(e.key === 'ArrowLeft')  player.next = {x:-1, y:0};
-    if(e.key === 'ArrowRight') player.next = {x:1, y:0};
-});
+let pacman = { x: 9, y: 15, dx: 0, dy: 0, state: 'HUNT', timer: 0, anim: 0 };
+let currentMode = 'SCATTER', modeTimer = 0, frameCount = 0;
 
 function isWall(x, y) {
     let tx = Math.round(x), ty = Math.round(y);
     return layout[ty] && layout[ty][tx] === 1;
 }
 
-function getDist(x1, y1, x2, y2) { return Math.hypot(x1-x2, y1-y2); }
+function getDist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
+
+// Target Tile Logic
+function getTarget(g) {
+    if (currentMode === 'SCATTER') return g.home;
+    switch(g.name) {
+        case 'Blinky': return {x: pacman.x, y: pacman.y};
+        case 'Pinky':  return {x: pacman.x + (pacman.dx * 4), y: pacman.y + (pacman.dy * 4)};
+        case 'Inky':
+            let b = ghosts[0], px = pacman.x + (pacman.dx * 2), py = pacman.y + (pacman.dy * 2);
+            return { x: px + (px - b.x), y: py + (py - b.y) };
+        case 'Clyde':
+            return getDist(g.x, g.y, pacman.x, pacman.y) > 8 ? {x: pacman.x, y: pacman.y} : g.home;
+    }
+}
+
+function updateEntity(e, speed, isGhost = false) {
+    if (Math.abs(e.x - Math.round(e.x)) < 0.1 && Math.abs(e.y - Math.round(e.y)) < 0.1) {
+        e.x = Math.round(e.x); e.y = Math.round(e.y);
+        let moves = [{x:0,y:-1},{x:-1,y:0},{x:0,y:1},{x:1,y:0}].filter(m => {
+            if (isWall(e.x + m.x, e.y + m.y)) return false;
+            if (isGhost && m.x === -e.dx && m.y === -e.dy) return false; // No backtracking
+            return true;
+        });
+
+        if (moves.length > 0) {
+            let target;
+            if (isGhost) {
+                target = getTarget(e);
+            } else {
+                target = (pacman.state === 'FLEE') 
+                    ? ghosts.reduce((a,b)=>getDist(e.x,e.y,a.x,a.y)<getDist(e.x,e.y,b.x,b.y)?a:b) 
+                    : pellets.sort((a,b)=>getDist(e.x,e.y,a.x,a.y)-getDist(e.x,e.y,b.x,b.y))[0];
+            }
+            moves.sort((a,b) => getDist(e.x+a.x, e.y+a.y, target.x, target.y) - getDist(e.x+b.x, e.y+b.y, target.x, target.y));
+            e.dx = moves[0].x; e.dy = moves[0].y;
+        }
+    }
+    e.x += e.dx * speed; e.y += e.dy * speed;
+    if (e.x < 0) e.x = MAP_W - 1; if (e.x > MAP_W - 1) e.x = 0; // Teleport
+}
 
 function gameLoop() {
     frameCount++;
-    
-    // --- PAC-MAN AI FIX ---
-    if (Math.abs(pacman.x - Math.round(pacman.x)) < 0.1 && Math.abs(pacman.y - Math.round(pacman.y)) < 0.1) {
-        pacman.x = Math.round(pacman.x); pacman.y = Math.round(pacman.y);
-        let moves = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].filter(m => !isWall(pacman.x + m.x, pacman.y + m.y));
-        
-        let target;
-        if (pacman.state === 'FLEE') {
-            // Power Up: Target the player ghost directly
-            target = {x: player.x, y: player.y};
-        } else if (pellets.length > 0) {
-            // Hunt: Target nearest pellet
-            let sortedPellets = [...pellets].sort((a,b) => getDist(pacman.x, pacman.y, a.x, a.y) - getDist(pacman.x, pacman.y, b.x, b.y));
-            target = sortedPellets[0];
-        }
+    modeTimer++;
+    if (currentMode === 'SCATTER' && modeTimer > 420) { currentMode = 'CHASE'; modeTimer = 0; }
+    else if (currentMode === 'CHASE' && modeTimer > 1200) { currentMode = 'SCATTER'; modeTimer = 0; }
+    document.getElementById('status').innerText = pacman.state==='FLEE' ? "POWER MODE" : currentMode;
 
-        if (target && moves.length > 0) {
-            moves.sort((a, b) => getDist(pacman.x + a.x, pacman.y + a.y, target.x, target.y) - getDist(pacman.x + b.x, pacman.y + b.y, target.x, target.y));
-            pacman.dx = moves[0].x; pacman.dy = moves[0].y;
-        }
-    }
-    pacman.x += pacman.dx * 0.1; pacman.y += pacman.dy * 0.1;
+    updateEntity(pacman, 0.1);
     pacman.anim = Math.sin(frameCount * 0.2) * 0.5 + 0.5;
+    
+    ghosts.forEach(g => updateEntity(g, 0.08, true));
 
-    // --- PLAYER GHOST ---
-    if (player.respawn > 0) {
-        player.respawn--;
-        document.getElementById('status').innerText = `RESPAWNING IN ${Math.ceil(player.respawn/60)}...`;
-        player.dx = 0; player.dy = 0;
-    } else {
-        if (Math.abs(player.x - Math.round(player.x)) < 0.1 && Math.abs(player.y - Math.round(player.y)) < 0.1) {
-            player.x = Math.round(player.x); player.y = Math.round(player.y);
-            if (!isWall(player.x + player.next.x, player.y + player.next.y)) {
-                player.dx = player.next.x; player.dy = player.next.y;
-            }
-            if (isWall(player.x + player.dx, player.y + player.dy)) { player.dx = 0; player.dy = 0; }
-        }
-        player.x += player.dx * 0.12; player.y += player.dy * 0.12;
-        document.getElementById('status').innerText = pacman.state === 'FLEE' ? "PAC-MAN IS CHASING YOU!" : "HUNT PAC-MAN!";
-        document.getElementById('status').className = pacman.state === 'FLEE' ? "danger" : "";
-    }
-
-    // --- COLLISIONS ---
-    if (getDist(pacman.x, pacman.y, player.x, player.y) < 0.6) {
-        if (pacman.state === 'FLEE') {
-            player.respawn = 300; // 5 seconds
-            player.x = 9; player.y = 9;
-        } else if (player.respawn === 0) {
-            alert("YOU CAUGHT HIM! GHOSTS WIN!"); location.reload();
-        }
-    }
-
+    // Collision & Pellets
     pellets = pellets.filter(p => {
         if (getDist(pacman.x, pacman.y, p.x, p.y) < 0.4) {
             if (p.v === 2) { pacman.state = 'FLEE'; pacman.timer = 360; }
@@ -137,50 +132,34 @@ function gameLoop() {
         if (pacman.timer === 0) pacman.state = 'HUNT';
     }
 
-    // --- DRAWING ---
+    ghosts.forEach(g => {
+        if (getDist(pacman.x, pacman.y, g.x, g.y) < 0.6) {
+            if (pacman.state === 'FLEE') { g.x = 9; g.y = 9; }
+            else { alert("GAME OVER"); location.reload(); }
+        }
+    });
+
+    // DRAW
     ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.strokeStyle = '#2222ff'; ctx.lineWidth = 2;
+    ctx.strokeStyle = '#22f'; ctx.lineWidth = 2;
     layout.forEach((row, y) => row.forEach((v, x) => {
         if(v === 1) ctx.strokeRect(x*TILE+4, y*TILE+4, TILE-8, TILE-8);
     }));
-
     pellets.forEach(p => {
         ctx.fillStyle = p.v===2 ? '#fff' : '#ffb8ae';
         ctx.beginPath(); ctx.arc(p.x*TILE+TILE/2, p.y*TILE+TILE/2, p.v===2?6:2, 0, 7); ctx.fill();
     });
 
-    // Draw Pac-Man Animation
-    ctx.fillStyle = pacman.state === 'FLEE' ? '#fff' : '#ff0';
-    let angle = pacman.anim * 0.25 * Math.PI;
-    let rotate = 0;
-    if (pacman.dx === 1) rotate = 0;
-    if (pacman.dx === -1) rotate = Math.PI;
-    if (pacman.dy === 1) rotate = Math.PI / 2;
-    if (pacman.dy === -1) rotate = -Math.PI / 2;
+    ctx.fillStyle = pacman.state==='FLEE' ? '#fff' : '#ff0';
+    ctx.beginPath(); ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, 10, pacman.anim*0.3, 2*Math.PI-pacman.anim*0.3);
+    ctx.lineTo(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2); ctx.fill();
 
-    ctx.beginPath();
-    ctx.moveTo(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2);
-    ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, 10, rotate + angle, rotate + 2*Math.PI - angle);
-    ctx.fill();
+    ghosts.forEach(g => {
+        ctx.fillStyle = pacman.state==='FLEE' ? '#22f' : g.color;
+        ctx.beginPath(); ctx.arc(g.x*TILE+TILE/2, g.y*TILE+TILE/2-2, 9, Math.PI, 0);
+        ctx.lineTo(g.x*TILE+TILE-3, g.y*TILE+TILE-2); ctx.lineTo(g.x*TILE+3, g.y*TILE+TILE-2); ctx.fill();
+    });
 
-    // Draw Ghost Animation
-    if (player.respawn === 0) {
-        ctx.fillStyle = pacman.state === 'FLEE' ? '#2121ff' : player.color;
-        let ox = player.x*TILE, oy = player.y*TILE;
-        let wobble = Math.sin(frameCount * 0.3) * 2;
-        ctx.beginPath();
-        ctx.arc(ox+TILE/2, oy+TILE/2-2, 9, Math.PI, 0);
-        ctx.lineTo(ox+TILE-3, oy+TILE-2 + wobble);
-        ctx.lineTo(ox+TILE/2+4, oy+TILE-5 - wobble);
-        ctx.lineTo(ox+TILE/2-4, oy+TILE-5 + wobble);
-        ctx.lineTo(ox+3, oy+TILE-2 - wobble);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(ox+TILE/2-4, oy+TILE/2-3, 3, 0, 7); ctx.fill();
-        ctx.beginPath(); ctx.arc(ox+TILE/2+4, oy+TILE/2-3, 3, 0, 7); ctx.fill();
-    }
-
-    if (pellets.length === 0) { alert("GAME OVER - HE ATE EVERYTHING!"); location.reload(); }
     requestAnimationFrame(gameLoop);
 }
 gameLoop();
