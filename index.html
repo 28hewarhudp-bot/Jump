@@ -1,105 +1,97 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Maze Stalker: Stillness</title>
+    <title>THE MAZE: TWO STALKERS</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: black; font-family: 'Courier New', Courier, monospace; }
-        #ui { position: absolute; top: 20px; left: 20px; color: #ff0000; pointer-events: none; z-index: 10; }
-        #timer-ui { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 30px; display: none; }
+        body { margin: 0; overflow: hidden; background-color: black; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; top: 15px; left: 15px; color: red; text-shadow: 2px 2px black; pointer-events: none; z-index: 10; }
+        #hold-still { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 32px; display: none; text-align: center; }
         #msg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: red; display: none; align-items: center; justify-content: center; z-index: 20; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h2>STALKER STATUS: <span id="status">WANDERING</span></h2>
-        <p>IF HE FINDS YOU: <b>FREEZE FOR 10 SECONDS</b></p>
+        <h2>STALKER 1: <span id="s1-status">WANDERING</span></h2>
+        <h2>STALKER 2: <span id="s2-status">WANDERING</span></h2>
+        <p><b>CLICK SCREEN TO START</b> | WASD: MOVE | SPACE: RUN</p>
     </div>
-    <div id="timer-ui">HOLD STILL: <span id="seconds">10</span></div>
-    <div id="msg"><h1>YOU MOVED.</h1></div>
+    <div id="hold-still"><h1>HOLD STILL!</h1><p>SECONDS LEFT: <span id="sec">10</span></p></div>
+    <div id="msg"><h1>THEY FOUND YOU.</h1></div>
 
     <script src="https://unpkg.com"></script>
     <script>
-        // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- FIXED BRIGHT FLASHLIGHT ---
-        const flashlight = new THREE.SpotLight(0xffffff, 5, 60, 0.6, 0.5); // Much brighter and wider
-        scene.add(flashlight);
-        scene.add(flashlight.target);
-        scene.add(new THREE.AmbientLight(0x0a0a0a)); // Tiny bit of light so it's not pitch black
+        // --- FLASHLIGHT FIX ---
+        // We add a 'Light Target' as a child of the camera so it always moves with your head
+        const lightTarget = new THREE.Object3D();
+        lightTarget.position.set(0, 0, -1);
+        camera.add(lightTarget);
+        scene.add(camera); // Essential to add camera to scene for the target to work
 
-        // --- MAZE ---
-        const mazeSize = 30, wallSize = 5;
-        const mazeGrid = [];
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a });
-        const wallGeo = new THREE.BoxGeometry(wallSize, wallSize, wallSize);
+        const flashlight = new THREE.SpotLight(0xffffff, 8, 50, 0.5, 0.4);
+        flashlight.target = lightTarget;
+        camera.add(flashlight); // Light is now physically attached to your eyes
 
+        // --- MAZE & MONSTERS ---
+        const mazeSize = 40, wallSize = 6;
+        const walls = [];
+        const loader = new THREE.TextureLoader();
+
+        function createWall(x, z) {
+            const wall = new THREE.Mesh(new THREE.BoxGeometry(wallSize, 10, wallSize), new THREE.MeshPhongMaterial({color: 0x111111}));
+            wall.position.set(x*wallSize - 120, 5, z*wallSize - 120);
+            scene.add(wall);
+            walls.push(wall);
+        }
+
+        // Random Maze
         for(let x=0; x<mazeSize; x++) {
-            mazeGrid[x] = [];
             for(let z=0; z<mazeSize; z++) {
-                if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || Math.random() > 0.85) {
-                    const wall = new THREE.Mesh(wallGeo, wallMat);
-                    wall.position.set(x*wallSize - 75, wallSize/2, z*wallSize - 75);
-                    scene.add(wall);
-                    mazeGrid[x][z] = 1;
-                } else { mazeGrid[x][z] = 0; }
+                if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || Math.random() > 0.88) createWall(x,z);
             }
         }
-        mazeGrid[5][5] = 0; // Spawn clear
 
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshPhongMaterial({color: 0x050505}));
-        floor.rotation.x = -Math.PI/2;
-        scene.add(floor);
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshPhongMaterial({color: 0x050505})).rotateX(-Math.PI/2));
 
-        // --- THE MONSTER ---
-        // Using your specific image as a texture
-        const loader = new THREE.TextureLoader();
-        const monsterTex = loader.load('https://deepai.org'); // Placeholder for your image
-        const monsterMat = new THREE.SpriteMaterial({ map: monsterTex });
-        const monster = new THREE.Sprite(monsterMat);
-        monster.scale.set(4, 7, 1);
-        monster.position.set(20, 3.5, 20);
-        scene.add(monster);
+        // Create Monsters
+        const m1Tex = loader.load('https://deepai.org');
+        const m2Tex = loader.load('https://deepai.org');
 
-        // AI Logic
-        let monsterState = "WANDER";
-        let wanderTarget = new THREE.Vector3(0, 3.5, 0);
-        let stillTime = 0;
-        let isMoving = false;
+        function makeMonster(tex, x, z) {
+            const m = new THREE.Sprite(new THREE.SpriteMaterial({map: tex}));
+            m.scale.set(4, 7, 1);
+            m.position.set(x, 3.5, z);
+            m.userData = { state: "WANDER", target: new THREE.Vector3(x, 3.5, z), stillStart: 0 };
+            scene.add(m);
+            return m;
+        }
 
-        // --- CONTROLS ---
-        let yaw = 0, pitch = 0;
+        const monsters = [makeMonster(m1Tex, 30, 30), makeMonster(m2Tex, -30, -30)];
+
+        // --- GAMEPLAY ---
+        let yaw = 0, pitch = 0, playerPos = new THREE.Vector3(-100, 1.6, -100);
         document.body.addEventListener('click', () => renderer.domElement.requestPointerLock());
         document.addEventListener('mousemove', (e) => {
-            if(document.pointerLockElement) {
-                yaw -= e.movementX * 0.002;
-                pitch -= e.movementY * 0.002;
-                pitch = Math.max(-1, Math.min(1, pitch));
-            }
+            if(document.pointerLockElement) { yaw -= e.movementX*0.002; pitch -= e.movementY*0.002; pitch = Math.max(-1, Math.min(1, pitch)); }
         });
 
         const keys = {};
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        const playerPos = new THREE.Vector3(-60, 1.6, -60);
-
-        // --- GAME LOOP ---
         function animate() {
             requestAnimationFrame(animate);
-
-            // Movement Check
-            isMoving = (keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']);
+            let isMoving = (keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']);
+            
             if(isMoving) {
                 const move = new THREE.Vector3();
-                if(keys['KeyW']) move.z -= 0.15;
-                if(keys['KeyS']) move.z += 0.15;
-                if(keys['KeyA']) move.x -= 0.15;
-                if(keys['KeyD']) move.x += 0.15;
+                if(keys['KeyW']) move.z -= 0.16; if(keys['KeyS']) move.z += 0.16;
+                if(keys['KeyA']) move.x -= 0.16; if(keys['KeyD']) move.x += 0.16;
                 move.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
                 playerPos.add(move);
             }
@@ -107,46 +99,31 @@
             camera.position.copy(playerPos);
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
-            flashlight.position.copy(playerPos);
-            flashlight.target.position.copy(playerPos).add(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion));
+            // AI Loop
+            let anyDetect = false;
+            monsters.forEach((m, i) => {
+                const dist = m.position.distanceTo(playerPos);
+                const status = document.getElementById(`s${i+1}-status`);
 
-            // MONSTER AI
-            const dist = monster.position.distanceTo(playerPos);
-
-            if(monsterState === "WANDER") {
-                document.getElementById('status').innerText = "WANDERING";
-                // Wander toward random points
-                if(monster.position.distanceTo(wanderTarget) < 2) {
-                    wanderTarget.set((Math.random()-0.5)*140, 3.5, (Math.random()-0.5)*140);
+                if(m.userData.state === "WANDER") {
+                    status.innerText = "WANDERING";
+                    if(m.position.distanceTo(m.userData.target) < 2) {
+                        m.userData.target.set((Math.random()-0.5)*200, 3.5, (Math.random()-0.5)*200);
+                    }
+                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.06));
+                    if(dist < 18) { m.userData.state = "DETECTED"; m.userData.stillStart = Date.now(); }
+                } 
+                else if(m.userData.state === "DETECTED") {
+                    anyDetect = true;
+                    status.innerText = "HE SEES YOU!";
+                    let left = 10 - Math.floor((Date.now() - m.userData.stillStart)/1000);
+                    document.getElementById('sec').innerText = left;
+                    if(isMoving) { document.getElementById('msg').style.display='flex'; setTimeout(()=>location.reload(), 2000); }
+                    if(left <= 0) { m.userData.state = "WANDER"; m.position.set((Math.random()-0.5)*150, 3.5, (Math.random()-0.5)*150); }
                 }
-                const dir = new THREE.Vector3().subVectors(wanderTarget, monster.position).normalize();
-                monster.position.add(dir.multiplyScalar(0.05));
+            });
 
-                if(dist < 15) { 
-                    monsterState = "DETECTED"; 
-                    stillTime = Date.now(); 
-                }
-            } 
-            else if(monsterState === "DETECTED") {
-                document.getElementById('status').innerText = "HE SEES YOU!";
-                document.getElementById('timer-ui').style.display = 'block';
-                
-                let elapsed = Math.floor((Date.now() - stillTime) / 1000);
-                document.getElementById('seconds').innerText = 10 - elapsed;
-
-                if(isMoving) { // YOU MOVED WHILE HE WAS NEAR
-                    document.getElementById('msg').style.display = 'flex';
-                    setTimeout(() => location.reload(), 2000);
-                }
-
-                if(elapsed >= 10) { // SUCCESS
-                    monsterState = "WANDER";
-                    document.getElementById('timer-ui').style.display = 'none';
-                    // Move monster far away so he doesn't immediately find you again
-                    monster.position.set((Math.random()-0.5)*100, 3.5, (Math.random()-0.5)*100);
-                }
-            }
-
+            document.getElementById('hold-still').style.display = anyDetect ? 'block' : 'none';
             renderer.render(scene, camera);
         }
         animate();
