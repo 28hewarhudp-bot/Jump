@@ -1,134 +1,104 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>THE MAZE - BRIGHT VERSION</title>
+    <title>MAZE SURVIVAL</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Arial', sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: black; background: white; padding: 10px; border-radius: 5px; z-index: 10; }
-        #hold-still { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: red; font-size: 40px; display: none; text-align: center; font-weight: bold; }
-        #msg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: red; color: white; display: none; align-items: center; justify-content: center; z-index: 20; }
+        body { margin: 0; overflow: hidden; background-color: #222; font-family: sans-serif; }
+        canvas { display: block; background: #000; margin: auto; border: 5px solid #444; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 5px; }
+        #freeze { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: yellow; font-size: 60px; font-weight: bold; display: none; text-align: center; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <b>WASD:</b> Move | <b>Shift:</b> Run | <b>Mouse:</b> Look<br>
-        <b style="color:red">FREEZE FOR 10 SECONDS IF SPOTTED!</b>
+        <b>WASD:</b> Move | <b>SHIFT:</b> Run<br>
+        <span style="color: #ff4444;"><b>RED DOTS:</b> MONSTERS (FREEZE IF THEY GET CLOSE!)</span>
     </div>
-    <div id="hold-still">STAY STILL! <span id="sec">10</span></div>
-    <div id="msg"><h1>GAME OVER - YOU MOVED</h1></div>
+    <div id="freeze">FREEZE!<br><span id="timer">10</span></div>
+    <canvas id="gameCanvas"></canvas>
 
-    <script src="https://cloudflare.com"></script>
     <script>
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // Bright Blue Sky
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        // --- FULL BRIGHT LIGHTING ---
-        const ambient = new THREE.AmbientLight(0xffffff, 1); // 100% light everywhere
-        scene.add(ambient);
-        const sun = new THREE.DirectionalLight(0xffffff, 0.5);
-        sun.position.set(0, 100, 0);
-        scene.add(sun);
-
-        // --- BRIGHT GREEN MAZE ---
-        const mazeSize = 25, wallSize = 10;
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x2e7d32 }); // Bright Green
-        const wallGeo = new THREE.BoxGeometry(wallSize, 15, wallSize);
-
-        for(let x=0; x<mazeSize; x++) {
-            for(let z=0; z<mazeSize; z++) {
-                if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || (x%3==0 && z%3==0)) {
-                    const wall = new THREE.Mesh(wallGeo, wallMat);
-                    wall.position.set(x*wallSize - 125, 7.5, z*wallSize - 125);
-                    scene.add(wall);
-                }
-            }
-        }
-        // Bright Grey Floor
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({color: 0xaaaaaa}));
-        floor.rotation.x = -Math.PI/2;
-        scene.add(floor);
-
-        // --- MONSTERS (NO TEXTURES - JUST COLOR BLOCKS) ---
-        function makeMonster(color, x, z) {
-            const m = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 4), new THREE.MeshPhongMaterial({color: color}));
-            m.position.set(x, 4, z);
-            m.userData = { state: "WANDER", target: new THREE.Vector3(x, 4, z), timer: 0 };
-            scene.add(m);
-            return m;
-        }
-        const monsters = [
-            makeMonster(0xff0000, 30, 30), // Red Monster (Skull)
-            makeMonster(0x4b0082, -30, -30) // Purple Monster (Black Face)
+        // --- GAME SETTINGS ---
+        let player = { x: canvas.width/2, y: canvas.height/2, size: 15, speed: 3 };
+        let monsters = [
+            { x: 100, y: 100, size: 20, color: "red", state: "WANDER", timer: 0 },
+            { x: canvas.width - 100, y: canvas.height - 100, size: 20, color: "red", state: "WANDER", timer: 0 }
         ];
+        
+        // --- WALL DATA ---
+        let walls = [];
+        for(let i=0; i<15; i++) {
+            walls.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, w: 100, h: 20 });
+            walls.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, w: 20, h: 100 });
+        }
 
-        // --- CONTROLS ---
-        let yaw = 0, pitch = 0, playerPos = new THREE.Vector3(0, 2, 0);
         const keys = {};
+        window.addEventListener("keydown", (e) => keys[e.code] = true);
+        window.addEventListener("keyup", (e) => keys[e.code] = false);
 
-        document.body.addEventListener('click', () => renderer.domElement.requestPointerLock());
-        window.addEventListener('keydown', (e) => keys[e.code] = true);
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
-        document.addEventListener('mousemove', (e) => {
-            if(document.pointerLockElement) {
-                yaw -= e.movementX*0.002; pitch -= e.movementY*0.002;
-                pitch = Math.max(-1.2, Math.min(1.2, pitch));
-            }
-        });
+        function update() {
+            let moving = false;
+            let currentSpeed = keys['ShiftLeft'] ? player.speed * 2 : player.speed;
 
-        // --- GAME LOOP ---
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            const isMoving = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
-            const speed = keys['ShiftLeft'] ? 0.4 : 0.2;
-            
-            if(isMoving) {
-                const move = new THREE.Vector3();
-                if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
-                if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
-                move.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
-                playerPos.add(move);
-            }
+            if (keys['KeyW']) { player.y -= currentSpeed; moving = true; }
+            if (keys['KeyS']) { player.y += currentSpeed; moving = true; }
+            if (keys['KeyA']) { player.x -= currentSpeed; moving = true; }
+            if (keys['KeyD']) { player.x += currentSpeed; moving = true; }
 
-            camera.position.copy(playerPos);
-            camera.rotation.set(pitch, yaw, 0, 'YXZ');
+            // Monster Logic
+            let nearMonster = false;
+            monsters.forEach(m => {
+                let dx = player.x - m.x;
+                let dy = player.y - m.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
 
-            let activeFreeze = false;
-            monsters.forEach((m) => {
-                const dist = m.position.distanceTo(playerPos);
-
-                if(m.userData.state === "WANDER") {
-                    if(m.position.distanceTo(m.userData.target) < 3) {
-                        m.userData.target.set((Math.random()-0.5)*200, 4, (Math.random()-0.5)*200);
-                    }
-                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.08));
-                    if(dist < 20) { m.userData.state = "CHASE"; m.userData.timer = Date.now(); }
-                } 
-                else if(m.userData.state === "CHASE") {
-                    activeFreeze = true;
-                    let elapsed = Math.floor((Date.now() - m.userData.timer)/1000);
-                    document.getElementById('sec').innerText = 10 - elapsed;
-
-                    if(isMoving) { 
-                        document.getElementById('msg').style.display='flex';
-                        setTimeout(()=>location.reload(), 2000); 
-                    }
-                    if(elapsed >= 10) { 
-                        m.userData.state = "WANDER";
-                        m.position.set((Math.random()-0.5)*150, 4, (Math.random()-0.5)*150);
+                if (dist < 150) {
+                    nearMonster = true;
+                    if (moving) {
+                        alert("YOU MOVED! RESTARTING...");
+                        location.reload();
                     }
                 }
+
+                // Simple Wander
+                m.x += (Math.random() - 0.5) * 4;
+                m.y += (Math.random() - 0.5) * 4;
             });
 
-            document.getElementById('hold-still').style.display = activeFreeze ? 'block' : 'none';
-            renderer.render(scene, camera);
+            document.getElementById("freeze").style.display = nearMonster ? "block" : "none";
+            draw();
+            requestAnimationFrame(update);
         }
-        animate();
+
+        function draw() {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Walls (Green)
+            ctx.fillStyle = "#2e7d32";
+            walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+            // Draw Monsters (Red)
+            monsters.forEach(m => {
+                ctx.fillStyle = m.color;
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, m.size, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Draw Player (White)
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        update();
     </script>
 </body>
 </html>
