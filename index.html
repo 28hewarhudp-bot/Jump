@@ -1,107 +1,124 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Jumping Spider Droid: Garden Mission</title>
+    <title>Spider Prototype 0.1</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; font-family: 'Courier New', monospace; overflow: hidden; }
-        canvas { background: #3d2b1f; border: 8px solid #fff; box-shadow: 0 0 40px rgba(0,0,0,0.8); }
-        #ui { position: absolute; top: 20px; color: #0f0; text-align: center; pointer-events: none; }
-        #camera-ui { position: absolute; bottom: 20px; color: white; font-size: 12px; }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h2 id="web-display">WEBS: 5/5</h2>
-        <p><b>WASD:</b> Move | <b>SPACE:</b> Jump/Reel | <b>E:</b> Anchor Web | <b>V:</b> Toggle View</p>
+        <h2 id="web-count">WEBS: 5/5</h2>
+        <p><b>WASD:</b> Move | <b>SPACE:</b> Jump/Reel | <b>E:</b> Safety Web | <b>F:</b> Attack</p>
     </div>
-    <div id="camera-ui">FEED: TOP-DOWN_SURVEILLANCE</div>
-    <canvas id="gameCanvas"></canvas>
 
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 900; canvas.height = 650;
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com" } }
+    </script>
 
-        let webs = 5, flies = [], leaves = [], safetyWeb = null, frame = 0, isFirstPerson = false;
-        const player = { x: 450, y: 325, r: 18, isJumping: false, scale: 1, onLeaf: true };
+    <script type="module">
+        import * as THREE from 'three';
 
-        // Generate the Garden
-        for(let i=0; i<12; i++) {
-            leaves.push({ x: Math.random() * 800 + 50, y: Math.random() * 550 + 50, r: Math.random() * 30 + 70 });
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0xffffff, 1));
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(10, 50, 10);
+        scene.add(sun);
+
+        // Ground & Hills
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x4a7c44 }));
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        // 3D Conical Plants (from image)
+        function createPlant(x, z) {
+            const h = Math.random() * 5 + 3;
+            const geo = new THREE.ConeGeometry(2, h, 12);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x2d5a27 });
+            const plant = new THREE.Mesh(geo, mat);
+            plant.position.set(x, h/2, z);
+            scene.add(plant);
         }
-        function spawnFly() { flies.push({ x: Math.random() * 850, y: Math.random() * 600 }); }
-        for(let i=0; i<4; i++) spawnFly();
+        for(let i=0; i<40; i++) createPlant(Math.random()*100-50, Math.random()*100-50);
 
+        // The Spider Model
+        const spider = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+        body.scale.set(1, 0.6, 1.5);
+        spider.add(body);
+        
+        // Red mark on back
+        const mark = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: 0x990000 }));
+        mark.position.set(0, 0.2, 0.3);
+        spider.add(mark);
+        scene.add(spider);
+
+        // Game State
+        let webs = 5, isJumping = false, safetyLine = null, anchor = new THREE.Vector3(), velocityY = 0;
         const keys = {};
-        window.onkeydown = (e) => {
-            let k = e.key.toLowerCase(); keys[k] = true;
-            if(k === 'e' && !safetyWeb && webs > 0) { webs--; safetyWeb = { x: player.x, y: player.y }; updateUI(); }
-            if(k === 'v') { isFirstPerson = !isFirstPerson; document.getElementById('camera-ui').innerText = isFirstPerson ? "FEED: SPIDER_EYE_CAM" : "FEED: TOP-DOWN_SURVEILLANCE"; }
-        };
-        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
-        function updateUI() { document.getElementById('web-display').innerText = `WEBS: ${webs}/5`; }
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        function gameLoop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            frame++;
+        function update() {
+            // Movement logic
+            const speed = 0.15;
+            if (keys['KeyW']) { spider.translateZ(speed); }
+            if (keys['KeyS']) { spider.translateZ(-speed); }
+            if (keys['KeyA']) { spider.rotation.y += 0.05; }
+            if (keys['KeyD']) { spider.rotation.y -= 0.05; }
 
-            // Visual effect for First Person
-            if(isFirstPerson) { ctx.fillStyle = "#112211"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.globalAlpha = 0.5; }
+            // Camera follows spider
+            const relativeCameraOffset = new THREE.Vector3(0, 2, -5);
+            const cameraOffset = relativeCameraOffset.applyMatrix4(spider.matrixWorld);
+            camera.position.lerp(cameraOffset, 0.1);
+            camera.lookAt(spider.position);
 
-            // Leaves
-            ctx.fillStyle = "#224422";
-            leaves.forEach(l => { ctx.beginPath(); ctx.arc(l.x, l.y, l.r, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = "#44aa44"; ctx.lineWidth = 4; ctx.stroke(); });
-
-            // Safety Line
-            if(safetyWeb) {
-                ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 3; ctx.setLineDash([5, 5]);
-                ctx.beginPath(); ctx.moveTo(safetyWeb.x, safetyWeb.y); ctx.lineTo(player.x, player.y); ctx.stroke(); ctx.setLineDash([]);
-                ctx.fillStyle = "cyan"; ctx.beginPath(); ctx.arc(safetyWeb.x, safetyWeb.y, 6, 0, Math.PI*2); ctx.fill();
+            // Safety Web (E)
+            if (keys['KeyE'] && !safetyLine && webs > 0) {
+                webs--;
+                document.getElementById('web-count').innerText = `WEBS: ${webs}/5`;
+                anchor.copy(spider.position);
+                safetyLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([anchor, spider.position]), new THREE.LineBasicMaterial({ color: 0xffffff }));
+                scene.add(safetyLine);
             }
 
-            // Flies
-            ctx.fillStyle = "yellow";
-            flies.forEach(f => { ctx.beginPath(); ctx.arc(f.x, f.y, 6, 0, Math.PI*2); ctx.fill(); });
+            // Jump
+            if (keys['Space'] && !isJumping) { isJumping = true; velocityY = 0.25; }
 
-            // Movement & Mechanics
-            let s = 4.5;
-            if(keys['a']) player.x -= s; if(keys['d']) player.x += s; if(keys['w']) player.y -= s; if(keys['s']) player.y += s;
+            if (isJumping || spider.position.y > 0) {
+                spider.position.y += velocityY;
+                velocityY -= 0.01;
 
-            if(keys[' '] && !player.isJumping) {
-                player.isJumping = true; player.scale = 1.8;
-                setTimeout(() => { player.isJumping = false; player.scale = 1; checkLanding(); }, 600);
+                if (safetyLine && keys['Space']) {
+                    spider.position.lerp(anchor, 0.1);
+                    velocityY = 0;
+                }
+
+                if (safetyLine) safetyLine.geometry.setFromPoints([anchor, spider.position]);
+
+                if (spider.position.y <= 0) {
+                    spider.position.y = 0; isJumping = false; velocityY = 0;
+                    if (safetyLine) { scene.remove(safetyLine); safetyLine = null; }
+                }
+
+                if (spider.position.y < -10) { alert("Game Over"); location.reload(); }
             }
 
-            if(keys[' '] && safetyWeb && !player.onLeaf) { player.x += (safetyWeb.x - player.x) * 0.12; player.y += (safetyWeb.y - player.y) * 0.12; }
-
-            if(keys['f']) {
-                flies.forEach((f, i) => { if(Math.hypot(player.x - f.x, player.y - f.y) < 40) { flies.splice(i, 1); webs = Math.min(5, webs + 1); updateUI(); spawnFly(); }});
-            }
-
-            function checkLanding() {
-                let hit = leaves.some(l => Math.hypot(player.x - l.x, player.y - l.y) < l.r);
-                player.onLeaf = hit;
-                if(!hit && !safetyWeb) { alert("MISSION FAILED: DROID CRITICAL FALL"); location.reload(); }
-                else if (hit) safetyWeb = null;
-            }
-
-            // Draw "Spider Droid"
-            ctx.save();
-            ctx.translate(player.x, player.y); ctx.scale(player.scale, player.scale);
-            ctx.fillStyle = "#333"; ctx.fillRect(-15, -10, 30, 20); // Metal Body
-            ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(8, -4, 4, 0, Math.PI*2); ctx.fill(); // Droid Eyes
-            ctx.arc(-8, -4, 4, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle = "#555"; ctx.lineWidth = 3;
-            for(let i=0; i<8; i++){
-                let ang = (i * Math.PI / 4) + (frame * 0.15);
-                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(Math.cos(ang)*22, Math.sin(ang)*22); ctx.stroke();
-            }
-            ctx.restore();
-            ctx.globalAlpha = 1.0;
-            requestAnimationFrame(gameLoop);
+            renderer.render(scene, camera);
+            requestAnimationFrame(update);
         }
-        gameLoop();
+        update();
     </script>
 </body>
 </html>
