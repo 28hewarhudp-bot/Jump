@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Jumping Spider FPS</title>
+    <title>Jumping Spider: Garden Hunter</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
-        #ui { position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #0f0; text-shadow: 2px 2px #000; pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: rgba(255,255,255,0.5); border-radius: 50%; transform: translate(-50%, -50%); }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h1 id="webs">WEBS: 5/5</h1>
-        <p id="status">Target Flies to Refill Web</p>
+        <h2 id="web-count">WEBS: 5/5</h2>
+        <p id="hint">E: Use Web Safety Line | F: Attack | SPACE: Jump/Climb</p>
     </div>
     <div id="crosshair"></div>
 
@@ -22,59 +22,63 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // Setup Scene
+        // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
+        scene.background = new THREE.Color(0x1a2e1a); // Dark garden mood
+        scene.fog = new THREE.Fog(0x1a2e1a, 10, 50);
+
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Lighting
-        const light = new THREE.AmbientLight(0x404040); scene.add(light);
-        const sun = new THREE.DirectionalLight(0xffffff, 1); sun.position.set(5, 10, 5); scene.add(sun);
+        // --- LIGHTING ---
+        const ambient = new THREE.AmbientLight(0x404040, 2); scene.add(ambient);
+        const sun = new THREE.DirectionalLight(0xffffff, 1); sun.position.set(10, 20, 10); scene.add(sun);
 
-        // World: Floor and Obstacles to climb
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: 0x228b22 }));
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
+        // --- GARDEN WORLD ---
+        // Ground (Soil/Moss)
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x3d2b1f }));
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
 
-        const boxGeo = new THREE.BoxGeometry(4, 10, 4);
-        const wallMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
-        for(let i=0; i<10; i++){
-            const wall = new THREE.Mesh(boxGeo, wallMat);
-            wall.position.set(Math.random()*40-20, 5, Math.random()*40-20);
-            scene.add(wall);
+        // Giant Leaves and Stems
+        function createLeaf(x, z, h) {
+            const group = new THREE.Group();
+            // Stem
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, h), new THREE.MeshStandardMaterial({ color: 0x2d5a27 }));
+            stem.position.y = h/2;
+            group.add(stem);
+            // Leaf
+            const leaf = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 2, 0, Math.PI*2, 0, 0.1), new THREE.MeshStandardMaterial({ color: 0x4a7c44, side: THREE.DoubleSide }));
+            leaf.position.y = h;
+            leaf.rotation.x = Math.random();
+            group.add(leaf);
+            
+            group.position.set(x, 0, z);
+            scene.add(group);
+            return group;
         }
 
-        // Flies
-        let flies = [];
-        function spawnFly() {
-            const fly = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
-            fly.position.set(Math.random()*40-20, Math.random()*15 + 2, Math.random()*40-20);
-            scene.add(fly);
-            flies.push(fly);
-        }
-        for(let i=0; i<5; i++) spawnFly();
+        for(let i=0; i<30; i++) createLeaf(Math.random()*100-50, Math.random()*100-50, Math.random()*10+5);
 
-        // Game State
+        // --- GAME LOGIC ---
         let webs = 5;
         let isJumping = false;
         let safetyLine = null;
-        let lineMesh = null;
-        let webAnchor = new THREE.Vector3();
-        const velocity = new THREE.Vector3();
-        const direction = new THREE.Vector3();
+        let anchor = new THREE.Vector3();
+        let velocity = new THREE.Vector3();
         const keys = {};
 
-        camera.position.y = 1.5;
+        camera.position.set(0, 0.5, 0);
 
-        // Pointer Lock for FPS
+        // FPS Controls
         document.addEventListener('click', () => renderer.domElement.requestPointerLock());
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement) {
-                camera.rotation.y -= e.movementX * 0.002;
-                camera.rotation.x -= e.movementY * 0.002;
+                camera.rotation.y -= e.movementX * 0.003;
+                camera.rotation.x -= e.movementY * 0.003;
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
             }
         });
         camera.rotation.order = 'YXZ';
@@ -83,72 +87,59 @@
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
         function update() {
-            // Movement
-            const moveSpeed = 0.1;
-            if (keys['KeyW']) camera.translateZ(-moveSpeed);
-            if (keys['KeyS']) camera.translateZ(moveSpeed);
-            if (keys['KeyA']) camera.translateX(-moveSpeed);
-            if (keys['KeyD']) camera.translateX(moveSpeed);
+            // WASD Movement
+            const speed = 0.15;
+            if (keys['KeyW']) camera.translateZ(-speed);
+            if (keys['KeyS']) camera.translateZ(speed);
+            if (keys['KeyA']) camera.translateX(-speed);
+            if (keys['KeyD']) camera.translateX(speed);
 
-            // Jumping & Web Logic
-            if (keys['Space'] && camera.position.y <= 1.6 && !isJumping) {
-                if (webs > 0) {
-                    webs--;
-                    document.getElementById('webs').innerText = `WEBS: ${webs}/5`;
-                    webAnchor.copy(camera.position);
-                    isJumping = true;
-                    velocity.y = 0.2;
-                    
-                    // Visual Web Line
-                    const points = [webAnchor, camera.position];
-                    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-                    lineMesh = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
-                    scene.add(lineMesh);
-                } else {
-                    velocity.y = 0.2; // Small jump even without web
-                    isJumping = true;
-                }
+            // Web Safety Line (E)
+            if (keys['KeyE'] && !safetyLine && webs > 0) {
+                webs--;
+                document.getElementById('web-count').innerText = `WEBS: ${webs}/5`;
+                anchor.copy(camera.position);
+                const mat = new THREE.LineBasicMaterial({ color: 0xffffff });
+                const geo = new THREE.BufferGeometry().setFromPoints([anchor, camera.position]);
+                safetyLine = new THREE.Line(geo, mat);
+                scene.add(safetyLine);
             }
 
-            // Gravity & Safety Line Climbing
-            if (isJumping) {
+            // Free Jump (Space)
+            if (keys['Space'] && !isJumping) {
+                isJumping = true;
+                velocity.y = 0.25;
+            }
+
+            // Physics & Climbing
+            if (isJumping || camera.position.y > 0.5) {
                 camera.position.y += velocity.y;
-                velocity.y -= 0.01;
+                velocity.y -= 0.01; // Gravity
 
-                if (lineMesh) {
-                    const positions = lineMesh.geometry.attributes.position.array;
-                    positions[3] = camera.position.x;
-                    positions[4] = camera.position.y;
-                    positions[5] = camera.position.z;
-                    lineMesh.geometry.attributes.position.needsUpdate = true;
-
-                    // Hold Space to Climb back up
-                    if (keys['Space'] && camera.position.y < webAnchor.y) {
-                        camera.position.lerp(webAnchor, 0.1);
-                    }
+                // If safety line exists, Hold Space to Climb
+                if (safetyLine && keys['Space']) {
+                    camera.position.lerp(anchor, 0.1);
+                    velocity.y = 0;
                 }
 
-                if (camera.position.y <= 1.5) {
-                    camera.position.y = 1.5;
+                // Update Line Visual
+                if (safetyLine) {
+                    safetyLine.geometry.setFromPoints([anchor, camera.position]);
+                }
+
+                // Hit ground
+                if (camera.position.y <= 0.5) {
+                    camera.position.y = 0.5;
                     isJumping = false;
-                    if (lineMesh) {
-                        scene.remove(lineMesh);
-                        lineMesh = null;
-                    }
+                    velocity.y = 0;
+                    if (safetyLine) { scene.remove(safetyLine); safetyLine = null; }
                 }
-            }
 
-            // Attack Flies (E)
-            if (keys['KeyE']) {
-                flies.forEach((fly, i) => {
-                    if (camera.position.distanceTo(fly.position) < 3) {
-                        scene.remove(fly);
-                        flies.splice(i, 1);
-                        webs = Math.min(5, webs + 1);
-                        document.getElementById('webs').innerText = `WEBS: ${webs}/5`;
-                        spawnFly();
-                    }
-                });
+                // Death Logic (Fall without line)
+                if (camera.position.y < -5) {
+                    alert("You fell! No safety line!");
+                    location.reload();
+                }
             }
 
             renderer.render(scene, camera);
