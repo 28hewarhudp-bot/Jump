@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ghost Duel: Blinky vs Auto-Pacman</title>
+    <title>Ghost Squad: Blinky vs Auto-Pacman</title>
     <style>
         body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; }
-        .ui { margin-top: 10px; font-size: 20px; }
-        canvas { background: #000; margin-top: 10px; border: 2px solid #333; }
+        .ui { margin-top: 10px; font-size: 20px; text-shadow: 2px 2px #f00; }
+        canvas { background: #000; margin-top: 10px; border: 3px solid #222; box-shadow: 0 0 20px #222; }
         #status { font-weight: bold; }
-        .danger { color: #ff0000; animation: flash 0.5s infinite; }
-        @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.3; } }
+        .danger { color: #fff; animation: flash 0.4s infinite; }
+        @keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
     </style>
 </head>
 <body>
-    <div class="ui">MODE: <span id="status">SCATTER</span></div>
+    <div class="ui">STATUS: <span id="status">SCATTER</span></div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -28,13 +28,13 @@ const layout = [
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
     [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
-    [1,1,1,1,0,1,1,1,3,1,3,1,1,1,0,1,1,1,1],
-    [3,3,3,1,0,1,3,3,3,3,3,3,3,1,0,1,3,3,3],
-    [1,1,1,1,0,1,3,1,1,3,1,1,3,1,0,1,1,1,1],
-    [0,0,0,0,0,3,3,1,3,3,3,1,3,3,0,0,0,0,0],
-    [1,1,1,1,0,1,3,1,1,1,1,1,3,1,0,1,1,1,1],
-    [3,3,3,1,0,1,3,3,3,3,3,3,3,1,0,1,3,3,3],
-    [1,1,1,1,0,1,3,1,1,1,1,1,3,1,0,1,1,1,1],
+    [1,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1],
+    [0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0], // TUNNEL ROW
+    [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
+    [0,0,0,0,0,0,0,1,3,3,3,1,0,0,0,0,0,0,0], // CENTER
+    [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
+    [0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0], // TUNNEL ROW
+    [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
     [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
     [1,2,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,2,1],
@@ -48,7 +48,6 @@ const layout = [
 let pellets = [];
 layout.forEach((row, y) => row.forEach((v, x) => { if(v===0 || v===2) pellets.push({x, y, v}); }));
 
-// PLAYER GHOST IS BLINKY (INDEX 0)
 let ghosts = [
     { name: 'Blinky', x: 9, y: 7, color: '#f00', dx: 0, dy: 0, next: {x:0, y:0}, home: {x: 18, y: 0}, respawn: 0 },
     { name: 'Pinky', x: 9, y: 9, color: '#ffb8ff', dx: -1, dy: 0, home: {x: 0, y: 0} },
@@ -77,48 +76,40 @@ function getDist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
 function getTarget(g) {
     if (currentMode === 'SCATTER') return g.home;
     switch(g.name) {
-        case 'Blinky': return {x: pacman.x, y: pacman.y};
         case 'Pinky':  return {x: pacman.x + (pacman.dx * 4), y: pacman.y + (pacman.dy * 4)};
-        case 'Inky':
-            let b = ghosts[0], px = pacman.x + (pacman.dx * 2), py = pacman.y + (pacman.dy * 2);
-            return { x: px + (px - b.x), y: py + (py - b.y) };
-        case 'Clyde':
-            return getDist(g.x, g.y, pacman.x, pacman.y) > 8 ? {x: pacman.x, y: pacman.y} : g.home;
+        case 'Inky':   return {x: (pacman.x * 2 - ghosts[0].x), y: (pacman.y * 2 - ghosts[0].y)};
+        case 'Clyde':  return getDist(g.x, g.y, pacman.x, pacman.y) > 8 ? {x: pacman.x, y: pacman.y} : g.home;
+        default:       return {x: pacman.x, y: pacman.y};
     }
 }
 
 function updateEntity(e, speed, isAI = false, isGhost = false) {
     if (Math.abs(e.x - Math.round(e.x)) < 0.1 && Math.abs(e.y - Math.round(e.y)) < 0.1) {
         e.x = Math.round(e.x); e.y = Math.round(e.y);
-        
-        let moves = [{x:0,y:-1},{x:-1,y:0},{x:0,y:1},{x:1,y:0}].filter(m => {
+        let moves = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].filter(m => {
             if (isWall(e.x + m.x, e.y + m.y)) return false;
             if (isGhost && m.x === -e.dx && m.y === -e.dy) return false;
             return true;
         });
 
         if (moves.length > 0) {
-            let target;
             if (isAI) {
+                let target;
                 if (isGhost) {
                     target = getTarget(e);
                 } else {
-                    // PAC-MAN AI
                     let nearestG = ghosts.reduce((a,b)=>getDist(e.x,e.y,a.x,a.y)<getDist(e.x,e.y,b.x,b.y)?a:b);
-                    if (pacman.state === 'FLEE') {
-                        target = nearestG; // Attack mode
-                    } else if (getDist(e.x, e.y, nearestG.x, nearestG.y) < 4) {
-                        // Avoidance mode: Pick direction furthest from ghost
+                    if (pacman.state === 'FLEE') { target = nearestG; } 
+                    else if (getDist(e.x, e.y, nearestG.x, nearestG.y) < 4) {
                         moves.sort((a,b) => getDist(e.x+b.x, e.y+b.y, nearestG.x, nearestG.y) - getDist(e.x+a.x, e.y+a.y, nearestG.x, nearestG.y));
                         target = null;
-                    } else {
-                        target = pellets.sort((a,b)=>getDist(e.x,e.y,a.x,a.y)-getDist(e.x,e.y,b.x,b.y))[0];
+                    } else if (pellets.length > 0) {
+                        target = [...pellets].sort((a,b)=>getDist(e.x,e.y,a.x,a.y)-getDist(e.x,e.y,b.x,b.y))[0];
                     }
                 }
                 if (target) moves.sort((a,b) => getDist(e.x+a.x, e.y+a.y, target.x, target.y) - getDist(e.x+b.x, e.y+b.y, target.x, target.y));
                 e.dx = moves[0].x; e.dy = moves[0].y;
             } else {
-                // PLAYER CONTROL
                 if (!isWall(e.x + e.next.x, e.y + e.next.y)) { e.dx = e.next.x; e.dy = e.next.y; }
                 if (isWall(e.x + e.dx, e.y + e.dy)) { e.dx = 0; e.dy = 0; }
             }
@@ -129,30 +120,20 @@ function updateEntity(e, speed, isAI = false, isGhost = false) {
 }
 
 function gameLoop() {
-    frameCount++;
-    modeTimer++;
-    if (currentMode === 'SCATTER' && modeTimer > 420) { currentMode = 'CHASE'; modeTimer = 0; }
-    else if (currentMode === 'CHASE' && modeTimer > 1200) { currentMode = 'SCATTER'; modeTimer = 0; }
+    frameCount++; modeTimer++;
+    if (modeTimer > 600) { currentMode = currentMode === 'SCATTER' ? 'CHASE' : 'SCATTER'; modeTimer = 0; }
     
-    let statusEl = document.getElementById('status');
-    statusEl.innerText = pacman.state === 'FLEE' ? "PAC-MAN IS POWERED UP!" : currentMode;
-    statusEl.className = pacman.state === 'FLEE' ? "danger" : "";
+    document.getElementById('status').innerText = pacman.state === 'FLEE' ? "PAC-MAN IS POWERED UP!" : currentMode;
+    document.getElementById('status').className = pacman.state === 'FLEE' ? "danger" : "";
 
-    // Respawn check for player
-    if (ghosts[0].respawn > 0) {
-        ghosts[0].respawn--;
-        ghosts[0].dx = 0; ghosts[0].dy = 0;
-    } else {
-        updateEntity(ghosts[0], 0.1, false, true);
-    }
+    if (ghosts[0].respawn > 0) ghosts[0].respawn--;
+    else updateEntity(ghosts[0], 0.1, false, true);
     
-    updateEntity(pacman, 0.1, true, false);
-    pacman.anim = Math.sin(frameCount * 0.2) * 0.5 + 0.5;
-    
-    for(let i=1; i<ghosts.length; i++) updateEntity(ghosts[i], 0.08, true, true);
+    updateEntity(pacman, 0.09, true, false);
+    for(let i=1; i<ghosts.length; i++) updateEntity(ghosts[i], 0.07, true, true);
 
     pellets = pellets.filter(p => {
-        if (getDist(pacman.x, pacman.y, p.x, p.y) < 0.4) {
+        if (getDist(pacman.x, pacman.y, p.x, p.y) < 0.5) {
             if (p.v === 2) { pacman.state = 'FLEE'; pacman.timer = 360; }
             return false;
         }
@@ -161,35 +142,24 @@ function gameLoop() {
 
     if (pacman.timer > 0 && --pacman.timer === 0) pacman.state = 'HUNT';
 
-    ghosts.forEach((g, idx) => {
+    ghosts.forEach((g, i) => {
         if (getDist(pacman.x, pacman.y, g.x, g.y) < 0.6) {
-            if (pacman.state === 'FLEE') {
-                if (idx === 0) { g.respawn = 300; g.x = 9; g.y = 9; }
-                else { g.x = 9; g.y = 9; }
-            } else if (idx === 0 || g.respawn === 0) {
-                alert(idx === 0 ? "YOU CAUGHT HIM!" : "A GHOST CAUGHT HIM!");
-                location.reload();
+            if (pacman.state === 'FLEE') { g.x = 9; g.y = 9; if(i===0) g.respawn = 300; }
+            else if (g.respawn === 0) { 
+                alert(i === 0 ? "YOU CAUGHT HIM!" : "GAME OVER"); 
+                location.reload(); 
             }
         }
     });
 
-    // DRAWING
     ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.strokeStyle = '#22f'; ctx.lineWidth = 2;
-    layout.forEach((row, y) => row.forEach((v, x) => {
-        if(v === 1) ctx.strokeRect(x*TILE+4, y*TILE+4, TILE-8, TILE-8);
-    }));
-    pellets.forEach(p => {
-        ctx.fillStyle = p.v===2 ? '#fff' : '#ffb8ae';
-        ctx.beginPath(); ctx.arc(p.x*TILE+TILE/2, p.y*TILE+TILE/2, p.v===2?6:2, 0, 7); ctx.fill();
-    });
-
-    // Draw Pac-Man
+    layout.forEach((row, y) => row.forEach((v, x) => { if(v===1) ctx.strokeRect(x*TILE+4, y*TILE+4, TILE-8, TILE-8); }));
+    pellets.forEach(p => { ctx.fillStyle = p.v===2?'#fff':'#ffb8ae'; ctx.beginPath(); ctx.arc(p.x*TILE+TILE/2, p.y*TILE+TILE/2, p.v===2?6:2, 0, 7); ctx.fill(); });
+    
     ctx.fillStyle = pacman.state==='FLEE' ? '#fff' : '#ff0';
-    ctx.beginPath(); ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, 10, pacman.anim*0.3, 2*Math.PI-pacman.anim*0.3);
-    ctx.lineTo(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2); ctx.fill();
-
-    // Draw Ghosts
+    ctx.beginPath(); ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, 10, 0, 7); ctx.fill();
+    
     ghosts.forEach(g => {
         if (g.respawn > 0) return;
         ctx.fillStyle = pacman.state==='FLEE' ? '#22f' : g.color;
@@ -197,7 +167,7 @@ function gameLoop() {
         ctx.lineTo(g.x*TILE+TILE-3, g.y*TILE+TILE-2); ctx.lineTo(g.x*TILE+3, g.y*TILE+TILE-2); ctx.fill();
     });
 
-    if (pellets.length === 0) { alert("PAC-MAN WON!"); location.reload(); }
+    if (pellets.length === 0) { alert("PAC-MAN ATE IT ALL!"); location.reload(); }
     requestAnimationFrame(gameLoop);
 }
 gameLoop();
