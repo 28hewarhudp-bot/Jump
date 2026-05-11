@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Spider Prototype 0.1</title>
+    <title>Fixed Spider Prototype 0.1</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px #000; z-index: 100; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="ui">
         <h2 id="web-count">WEBS: 5/5</h2>
-        <p><b>WASD:</b> Move | <b>SPACE:</b> Jump/Reel | <b>E:</b> Safety Web | <b>F:</b> Attack</p>
+        <p><b>WASD:</b> Move | <b>SPACE:</b> Jump/Reel | <b>E:</b> Anchor | <b>F:</b> Attack</p>
     </div>
 
     <script type="importmap">
@@ -20,99 +20,88 @@
     <script type="module">
         import * as THREE from 'three';
 
+        // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
-
+        scene.background = new THREE.Color(0x87CEEB); // Clear Blue Sky for visibility
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Lights
-        scene.add(new THREE.AmbientLight(0xffffff, 1));
-        const sun = new THREE.DirectionalLight(0xffffff, 1);
-        sun.position.set(10, 50, 10);
+        // --- ENHANCED LIGHTING ---
+        scene.add(new THREE.AmbientLight(0xffffff, 1.5)); // Bright base light
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(20, 50, 20);
         scene.add(sun);
 
-        // Ground & Hills
-        const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x4a7c44 }));
+        // --- WORLD OBJECTS ---
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: 0x4a7c44 }));
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
 
-        // 3D Conical Plants (from image)
         function createPlant(x, z) {
-            const h = Math.random() * 5 + 3;
-            const geo = new THREE.ConeGeometry(2, h, 12);
-            const mat = new THREE.MeshStandardMaterial({ color: 0x2d5a27 });
-            const plant = new THREE.Mesh(geo, mat);
-            plant.position.set(x, h/2, z);
+            const h = Math.random() * 6 + 4;
+            const plant = new THREE.Mesh(new THREE.ConeGeometry(2.5, h, 16), new THREE.MeshStandardMaterial({ color: 0x2d5a27 }));
+            plant.position.set(x, h / 2, z);
             scene.add(plant);
         }
-        for(let i=0; i<40; i++) createPlant(Math.random()*100-50, Math.random()*100-50);
+        for (let i = 0; i < 50; i++) createPlant(Math.random() * 140 - 70, Math.random() * 140 - 70);
 
-        // The Spider Model
+        // --- PLAYER MODEL ---
         const spider = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-        body.scale.set(1, 0.6, 1.5);
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 12), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        body.scale.set(1, 0.7, 1.6);
         spider.add(body);
-        
-        // Red mark on back
-        const mark = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: 0x990000 }));
-        mark.position.set(0, 0.2, 0.3);
+        const mark = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+        mark.position.set(0, 0.2, 0.4);
         spider.add(mark);
+        spider.position.y = 0.4;
         scene.add(spider);
 
-        // Game State
-        let webs = 5, isJumping = false, safetyLine = null, anchor = new THREE.Vector3(), velocityY = 0;
+        // --- GAME MECHANICS ---
+        let webs = 5, velocityY = 0, isJumping = false, safetyLine = null, anchorPos = new THREE.Vector3();
         const keys = {};
-
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
         function update() {
-            // Movement logic
-            const speed = 0.15;
-            if (keys['KeyW']) { spider.translateZ(speed); }
-            if (keys['KeyS']) { spider.translateZ(-speed); }
-            if (keys['KeyA']) { spider.rotation.y += 0.05; }
-            if (keys['KeyD']) { spider.rotation.y -= 0.05; }
+            // Movement
+            const moveSpeed = 0.18;
+            if (keys['KeyW']) spider.translateZ(moveSpeed);
+            if (keys['KeyS']) spider.translateZ(-moveSpeed);
+            if (keys['KeyA']) spider.rotation.y += 0.06;
+            if (keys['KeyD']) spider.rotation.y -= 0.06;
 
-            // Camera follows spider
-            const relativeCameraOffset = new THREE.Vector3(0, 2, -5);
-            const cameraOffset = relativeCameraOffset.applyMatrix4(spider.matrixWorld);
-            camera.position.lerp(cameraOffset, 0.1);
+            // Fixed Camera Position (Behind Player)
+            const camPos = new THREE.Vector3(0, 3.5, -7).applyMatrix4(spider.matrixWorld);
+            camera.position.lerp(camPos, 0.15);
             camera.lookAt(spider.position);
 
-            // Safety Web (E)
+            // Web Anchor (E)
             if (keys['KeyE'] && !safetyLine && webs > 0) {
-                webs--;
-                document.getElementById('web-count').innerText = `WEBS: ${webs}/5`;
-                anchor.copy(spider.position);
-                safetyLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([anchor, spider.position]), new THREE.LineBasicMaterial({ color: 0xffffff }));
+                webs--; document.getElementById('web-count').innerText = `WEBS: ${webs}/5`;
+                anchorPos.copy(spider.position);
+                const mat = new THREE.LineBasicMaterial({ color: 0xffffff });
+                const geo = new THREE.BufferGeometry().setFromPoints([anchorPos, spider.position]);
+                safetyLine = new THREE.Line(geo, mat);
                 scene.add(safetyLine);
             }
 
-            // Jump
-            if (keys['Space'] && !isJumping) { isJumping = true; velocityY = 0.25; }
-
-            if (isJumping || spider.position.y > 0) {
+            // Jump & Physics
+            if (keys['Space'] && !isJumping) { isJumping = true; velocityY = 0.28; }
+            if (isJumping || spider.position.y > 0.4) {
                 spider.position.y += velocityY;
-                velocityY -= 0.01;
+                velocityY -= 0.012; // Gravity
 
-                if (safetyLine && keys['Space']) {
-                    spider.position.lerp(anchor, 0.1);
-                    velocityY = 0;
+                if (safetyLine && keys['Space']) { // Reel in
+                    spider.position.lerp(anchorPos, 0.1); velocityY = 0;
                 }
+                if (safetyLine) safetyLine.geometry.setFromPoints([anchorPos, spider.position]);
 
-                if (safetyLine) safetyLine.geometry.setFromPoints([anchor, spider.position]);
-
-                if (spider.position.y <= 0) {
-                    spider.position.y = 0; isJumping = false; velocityY = 0;
+                if (spider.position.y <= 0.4) {
+                    spider.position.y = 0.4; isJumping = false; velocityY = 0;
                     if (safetyLine) { scene.remove(safetyLine); safetyLine = null; }
                 }
-
-                if (spider.position.y < -10) { alert("Game Over"); location.reload(); }
             }
 
             renderer.render(scene, camera);
