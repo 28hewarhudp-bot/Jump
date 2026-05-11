@@ -1,292 +1,163 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Maintenance - 8-Bit First Person Pac-Man</title>
-    <link rel="stylesheet" type="text/css" href="https://googleapis.com">
+    <title>Reverse Pac-Man: Red Ghost Edition</title>
     <style>
-        body { background: #000; color: yellow; font-family: 'Permanent Marker', cursive; margin: 0; overflow: hidden; }
-        #container { position: relative; width: 100vw; height: 100vh; background: #000; }
-        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-
-        /* MOVED + RESIZED MINIMAP */
-        #minimap {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            top: auto;
-            left: auto;
-            width: 140px;
-            height: 140px;
-            background: rgba(0,0,0,0.8);
-            border: 2px solid #00F;
-        }
-
-        .ui {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            text-align: center;
-            pointer-events: none;
-            z-index: 10;
-        }
+        body { background: #111; color: white; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; }
+        canvas { border: 4px solid #222; background: black; }
+        .stats { margin-top: 10px; font-size: 20px; }
     </style>
 </head>
-
 <body>
-    <div class="ui">
-        <h1 style="font-size: 2.5em; margin: 0;">MAINTENANCE MODE</h1>
-        <p>SCORE: <span id="score">0</span> | WATCH OUT FOR THE GHOST GANG</p>
-    </div>
-
-    <div id="container">
-        <canvas id="view"></canvas>
-        <canvas id="minimap" width="140" height="140"></canvas>
-    </div>
+    <h1>YOU ARE THE RED GHOST</h1>
+    <p>Catch Pac-Man before he eats all the pellets!</p>
+    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <div class="stats">Pellets Left: <span id="pelletCount">0</span></div>
 
 <script>
-const canvas = document.getElementById('view');
+const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const mCanvas = document.getElementById('minimap');
-const mCtx = mCanvas.getContext('2d');
+const pelletDisplay = document.getElementById('pelletCount');
 
+const TILE_SIZE = 20;
+const SPEED = 2;
+
+// 1 = Wall, 0 = Pellet
 const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
-    [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
     [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
-    [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
-    [1,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,1,1],
-    [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
-    [1,1,1,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,1,1],
-    [0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0],
-    [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
-    [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
-    [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
-    [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
-    [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-    [1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,0,1,0,1,1],
-    [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
-    [1,0,1,1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
+    [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
+    [1,0,0,0,0,1,0,1,1,0,0,1,1,0,1,0,0,0,0,1],
+    [1,0,1,1,1,1,0,1,0,0,0,0,1,0,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1],
+    [1,0,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-let player = { x:1.5, y:1.5, dir:0, score:0 };
-
 let pellets = [];
-for(let y=0;y<map.length;y++)
-for(let x=0;x<map[y].length;x++)
-if(map[y][x]===0)
-pellets.push({x:x+0.5,y:y+0.5,e:true});
-
-/* GHOSTS */
-let ghosts = [
-    {id:'Blinky',x:10.5,y:9.5,color:'#FF0000',speed:0.035,dir:{x:1,y:0},home:{x:18,y:1}},
-    {id:'Pinky',x:9.5,y:9.5,color:'#FFB8FF',speed:0.035,dir:{x:-1,y:0},home:{x:1,y:1}},
-    {id:'Inky',x:10.5,y:10.5,color:'#00FFFF',speed:0.035,dir:{x:0,y:1},home:{x:18,y:18}},
-    {id:'Clyde',x:9.5,y:10.5,color:'#FFB852',speed:0.035,dir:{x:0,y:-1},home:{x:1,y:18}}
-];
-
-const keys={};
-window.onkeydown=e=>keys[e.code]=true;
-window.onkeyup=e=>keys[e.code]=false;
-
-/* AI HELPERS */
-const dirs=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
-
-function canMove(x,y){
-    return map[y] && map[y][x]===0;
+for(let row=0; row < map.length; row++) {
+    for(let col=0; col < map[row].length; col++) {
+        if(map[row][col] === 0) pellets.push({x: col * TILE_SIZE + 10, y: row * TILE_SIZE + 10});
+    }
 }
 
-function chooseDir(g,target){
-    let gx=Math.floor(g.x);
-    let gy=Math.floor(g.y);
-    let options=[];
+let playerGhost = { x: 200, y: 150, dirX: 0, dirY: 0, color: 'red' };
+let botPacman = { x: 30, y: 30, dirX: 0, dirY: 0, color: 'yellow' };
 
-    dirs.forEach(d=>{
-        if(d.x===-g.dir.x && d.y===-g.dir.y) return;
-
-        let nx=gx+d.x;
-        let ny=gy+d.y;
-
-        if(!canMove(nx,ny)) return;
-
-        options.push({
-            d,
-            dist:Math.hypot(nx-target.x,ny-target.y)
-        });
-    });
-
-    if(!options.length) return;
-
-    options.sort((a,b)=>a.dist-b.dist);
-    g.dir=options[0].d;
-}
-
-function drawPixelGhost(ctx,x,y,size,color){
-    ctx.fillStyle=color;
-    const p=size/14;
-    ctx.fillRect(x-6*p,y-4*p,12*p,10*p);
-    ctx.fillRect(x-5*p,y-6*p,10*p,12*p);
-    ctx.fillRect(x-3*p,y-7*p,6*p,14*p);
-}
-
-/* UPDATE */
-function update(){
-canvas.width=innerWidth;
-canvas.height=innerHeight;
-
-let move=0;
-if(keys.ArrowUp)move=0.08;
-if(keys.ArrowDown)move=-0.08;
-if(keys.ArrowLeft)player.dir-=0.06;
-if(keys.ArrowRight)player.dir+=0.06;
-
-let nx=player.x+Math.cos(player.dir)*move;
-let ny=player.y+Math.sin(player.dir)*move;
-
-if(map[Math.floor(ny)][Math.floor(nx)]===0){
-player.x=nx;player.y=ny;
-}
-
-pellets.forEach(p=>{
-if(p.e&&Math.hypot(p.x-player.x,p.y-player.y)<0.4){
-p.e=false;player.score+=10;
-document.getElementById('score').innerText=player.score;
-}
+// --- INPUT CONTROL (PLAYER AS GHOST) ---
+window.addEventListener('keydown', (e) => {
+    if(e.key === 'ArrowUp')    { playerGhost.dirX = 0;  playerGhost.dirY = -SPEED; }
+    if(e.key === 'ArrowDown')  { playerGhost.dirX = 0;  playerGhost.dirY = SPEED;  }
+    if(e.key === 'ArrowLeft')  { playerGhost.dirX = -SPEED; playerGhost.dirY = 0;  }
+    if(e.key === 'ArrowRight') { playerGhost.dirX = SPEED;  playerGhost.dirY = 0;  }
 });
 
-/* GHOST AI */
-ghosts.forEach(g => {
+function isWall(x, y) {
+    let col = Math.floor(x / TILE_SIZE);
+    let row = Math.floor(y / TILE_SIZE);
+    return map[row] && map[row][col] === 1;
+}
 
-    let target = { x: player.x, y: player.y };
+// --- PAC-MAN AI LOGIC ---
+function updatePacmanAI() {
+    let dx = playerGhost.x - botPacman.x;
+    let dy = playerGhost.y - botPacman.y;
+    let distToGhost = Math.sqrt(dx*dx + dy*dy);
 
-    // 🔴 BLINKY (direct chase)
-    if (g.id === 'Blinky') {
-        target = { x: player.x, y: player.y };
-    }
-
-    // 🩷 PINKY (4 tiles ahead)
-    else if (g.id === 'Pinky') {
-        target.x = player.x + Math.cos(player.dir) * 4;
-        target.y = player.y + Math.sin(player.dir) * 4;
-    }
-
-    // 🩵 INKY (Blinky + player vector ambush)
-    else if (g.id === 'Inky') {
-        let blinky = ghosts[0];
-
-        let px = player.x + Math.cos(player.dir) * 2;
-        let py = player.y + Math.sin(player.dir) * 2;
-
-        target.x = px + (px - blinky.x);
-        target.y = py + (py - blinky.y);
-    }
-
-    // 🟠 CLYDE (runs away when close)
-    else if (g.id === 'Clyde') {
-        let dist = Math.hypot(g.x - player.x, g.y - player.y);
-        if (dist < 8) {
-            target = { x: 1, y: 1 }; // scatter corner
+    if (distToGhost < 80) {
+        // FLEE MODE: Move away from Red Ghost
+        if (Math.abs(dx) > Math.abs(dy)) {
+            botPacman.dirX = dx > 0 ? -SPEED : SPEED;
+            botPacman.dirY = 0;
         } else {
-            target = { x: player.x, y: player.y };
+            botPacman.dirX = 0;
+            botPacman.dirY = dy > 0 ? -SPEED : SPEED;
+        }
+    } else {
+        // HUNT MODE: Move toward first pellet in list
+        if (pellets.length > 0) {
+            let target = pellets[0];
+            if (botPacman.x < target.x) botPacman.dirX = SPEED;
+            else if (botPacman.x > target.x) botPacman.dirX = -SPEED;
+            else botPacman.dirX = 0;
+
+            if (botPacman.y < target.y) botPacman.dirY = SPEED;
+            else if (botPacman.y > target.y) botPacman.dirY = -SPEED;
+            else botPacman.dirY = 0;
         }
     }
 
-    // 👉 movement (keeps your system stable)
-    let angle = Math.atan2(target.y - g.y, target.x - g.x);
+    // Collision check for AI
+    if (!isWall(botPacman.x + botPacman.dirX, botPacman.y + botPacman.dirY)) {
+        botPacman.x += botPacman.dirX;
+        botPacman.y += botPacman.dirY;
+    }
+}
 
-    let nx = g.x + Math.cos(angle) * g.speed;
-    let ny = g.y + Math.sin(angle) * g.speed;
-
-    // only move if not hitting wall
-    if (map[Math.floor(ny)] && map[Math.floor(ny)][Math.floor(nx)] === 0) {
-        g.x = nx;
-        g.y = ny;
+function gameLoop() {
+    // Update Player (Ghost)
+    if (!isWall(playerGhost.x + playerGhost.dirX, playerGhost.y + playerGhost.dirY)) {
+        playerGhost.x += playerGhost.dirX;
+        playerGhost.y += playerGhost.dirY;
     }
 
-    // collision
-    if (Math.hypot(g.x - player.x, g.y - player.y) < 0.4) {
+    // Update Bot (Pacman)
+    updatePacmanAI();
+
+    // Pacman eats pellets
+    pellets = pellets.filter(p => {
+        let d = Math.sqrt(Math.pow(p.x - botPacman.x, 2) + Math.pow(p.y - botPacman.y, 2));
+        return d > 10;
+    });
+    pelletDisplay.innerText = pellets.length;
+
+    // Check Win/Loss
+    let distMatch = Math.sqrt(Math.pow(playerGhost.x - botPacman.x, 2) + Math.pow(playerGhost.y - botPacman.y, 2));
+    if (distMatch < 15) {
+        alert("YOU CAUGHT HIM! YOU WIN!");
         location.reload();
+        return;
     }
-});
+    if (pellets.length === 0) {
+        alert("PAC-MAN ATE EVERYTHING! YOU LOSE!");
+        location.reload();
+        return;
+    }
 
-/* DRAW */
-function draw(){
-const w=canvas.width,h=canvas.height;
-ctx.fillStyle="#000";ctx.fillRect(0,0,w,h);
+    // Draw Everything
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw Map
+    for(let r=0; r<map.length; r++) {
+        for(let c=0; c<map[r].length; c++) {
+            if(map[r][c] === 1) {
+                ctx.fillStyle = 'blue';
+                ctx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
 
-let z=[];
-const fov=0.8;
+    // Draw Pellets
+    ctx.fillStyle = 'white';
+    pellets.forEach(p => ctx.fillRect(p.x-2, p.y-2, 4, 4));
 
-for(let i=0;i<w;i++){
-let a=(player.dir-fov/2)+(i/w)*fov;
-let d=0,hit=false;
+    // Draw Characters
+    ctx.fillStyle = 'yellow'; // Pacman
+    ctx.beginPath(); ctx.arc(botPacman.x, botPacman.y, 8, 0, Math.PI*2); ctx.fill();
 
-while(!hit&&d<20){
-d+=0.1;
-let tx=Math.floor(player.x+Math.cos(a)*d);
-let ty=Math.floor(player.y+Math.sin(a)*d);
-if(map[ty]&&map[ty][tx])hit=true;
+    ctx.fillStyle = 'red'; // You
+    ctx.fillRect(playerGhost.x-8, playerGhost.y-8, 16, 16);
+
+    requestAnimationFrame(gameLoop);
 }
 
-z[i]=d;
-let lh=h/(d*Math.cos(a-player.dir));
-
-ctx.beginPath();
-ctx.moveTo(i,h/2-lh/2);
-ctx.lineTo(i,h/2+lh/2);
-ctx.strokeStyle="rgb(0,0,"+(255-d*12)+")";
-ctx.stroke();
-}
-
-[...pellets.filter(p=>p.e),...ghosts].forEach(o=>{
-let dx=o.x-player.x,dy=o.y-player.y;
-let dist=Math.hypot(dx,dy);
-let ang=Math.atan2(dy,dx)-player.dir;
-
-if(Math.abs(ang)<fov){
-let sx=(ang/fov+0.5)*w;
-if(dist<z[sx]){
-if(o.color){
-drawPixelGhost(ctx,sx,h/2,h/dist,o.color);
-}else{
-ctx.fillStyle="yellow";
-ctx.beginPath();
-ctx.arc(sx,h/2,h/dist/15,0,7);
-ctx.fill();
-}
-}
-}
-});
-
-/* minimap */
-mCtx.clearRect(0,0,200,200);
-map.forEach((r,y)=>r.forEach((v,x)=>{
-if(v){
-mCtx.fillStyle="#00F";
-mCtx.fillRect(x*10,y*10,10,10);
-}
-}));
-
-mCtx.fillStyle="#fff";
-mCtx.fillRect(player.x*10,player.y*10,4,4);
-
-ghosts.forEach(g=>{
-mCtx.fillStyle=g.color;
-mCtx.fillRect(g.x*10,g.y*10,4,4);
-});
-
-}
-
-function loop(){
-update();
-draw();
-requestAnimationFrame(loop);
-}
-loop();
+gameLoop();
 </script>
 </body>
 </html>
