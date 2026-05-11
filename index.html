@@ -1,28 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>MAZE SURVIVAL 2D</title>
+    <title>THE STALKER: 2D SURVIVAL</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #111; font-family: sans-serif; }
-        canvas { display: block; background: #000; margin: auto; }
-        #ui { 
-            position: absolute; top: 15px; left: 15px; color: white; 
-            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 5px; 
-            pointer-events: none; border: 2px solid #555;
-        }
-        #msg { 
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            color: #ff0000; font-size: 50px; font-weight: bold; display: none; text-align: center;
-        }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; background-color: #0a0a0a; cursor: none; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 5px; border: 1px solid #333; pointer-events: none; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: red; font-size: 50px; font-weight: bold; display: none; text-align: center; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <b>WASD:</b> Move | <b>Shift:</b> Run<br>
-        <span style="color: #ff4444;">Avoid the Stalker!</span>
+        <b>CHARACTER:</b> White Square<br>
+        <b>STALKER:</b> EXACT IMAGE<br>
+        <hr>
+        <b>WASD:</b> Move<br>
+        <b>SHIFT:</b> Run
     </div>
-    <div id="msg">CAUGHT!</div>
+    <div id="msg">CAUGHT</div>
     <canvas id="gameCanvas"></canvas>
 
     <script>
@@ -31,71 +26,79 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // --- PLAYER & MONSTER SETTINGS ---
-        const player = { x: canvas.width / 2, y: canvas.height / 2, radius: 12, speed: 4 };
-        const monsterImg = new Image();
-        monsterImg.src = 'https://deepai.org'; // Your exact image
-
-        const monster = {
-            x: 100, y: 100,
-            width: 80, height: 120, // Proportions matching your image
-            speed: 1.5,
-            state: "WANDER",
-            targetX: 100, targetY: 100
+        // --- CHARACTER DATA ---
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            size: 20,
+            speed: 4
         };
 
-        const walls = [];
-        function createMaze() {
-            for(let i=0; i<35; i++) {
-                walls.push({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
-                    w: Math.random() > 0.5 ? 120 : 20,
-                    h: Math.random() > 0.5 ? 20 : 120
-                });
-            }
-        }
-        createMaze();
+        // --- MONSTER DATA ---
+        const monsterImg = new Image();
+        monsterImg.src = 'https://deepai.org';
 
+        const monster = {
+            x: 100,
+            y: 100,
+            w: 70,
+            h: 100,
+            speed: 1.8,
+            state: "WANDER",
+            targetX: Math.random() * canvas.width,
+            targetY: Math.random() * canvas.height
+        };
+
+        // --- CONTROLS ---
         const keys = {};
         window.addEventListener("keydown", (e) => keys[e.code] = true);
         window.addEventListener("keyup", (e) => keys[e.code] = false);
 
+        // --- GAME LOGIC ---
         function update() {
             // Player Movement
-            const currentSpeed = keys['ShiftLeft'] ? player.speed * 1.8 : player.speed;
+            const currentSpeed = keys['ShiftLeft'] ? player.speed * 1.7 : player.speed;
             if (keys['KeyW']) player.y -= currentSpeed;
             if (keys['KeyS']) player.y += currentSpeed;
             if (keys['KeyA']) player.x -= currentSpeed;
             if (keys['KeyD']) player.x += currentSpeed;
 
-            // Monster AI
+            // Boundary checks for player
+            if (player.x < 0) player.x = 0;
+            if (player.y < 0) player.y = 0;
+            if (player.x > canvas.width) player.x = canvas.width;
+            if (player.y > canvas.height) player.y = canvas.height;
+
+            // Monster AI Logic
             const dx = player.x - monster.x;
             const dy = player.y - monster.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (dist < 300) {
-                // Charge Player
+            if (distance < 350) {
+                // CHASE STATE: Monster sees you
                 monster.state = "CHASE";
                 const angle = Math.atan2(dy, dx);
-                monster.x += Math.cos(angle) * (monster.speed * 2);
-                monster.y += Math.sin(angle) * (monster.speed * 2);
+                monster.x += Math.cos(angle) * (monster.speed * 2.2);
+                monster.y += Math.sin(angle) * (monster.speed * 2.2);
             } else {
-                // Random Wander
+                // WANDER STATE: Monster moves randomly
                 monster.state = "WANDER";
-                if (Math.abs(monster.x - monster.targetX) < 5) {
+                const distToTarget = Math.sqrt(Math.pow(monster.targetX - monster.x, 2) + Math.pow(monster.targetY - monster.y, 2));
+                
+                if (distToTarget < 10) {
                     monster.targetX = Math.random() * canvas.width;
                     monster.targetY = Math.random() * canvas.height;
                 }
+                
                 const angle = Math.atan2(monster.targetY - monster.y, monster.targetX - monster.x);
                 monster.x += Math.cos(angle) * monster.speed;
                 monster.y += Math.sin(angle) * monster.speed;
             }
 
-            // Lose Condition
-            if (dist < 40) {
+            // Death Check
+            if (distance < 40) {
                 document.getElementById("msg").style.display = "block";
-                setTimeout(() => location.reload(), 2000);
+                setTimeout(() => location.reload(), 1500);
             }
 
             draw();
@@ -103,24 +106,34 @@
         }
 
         function draw() {
-            ctx.fillStyle = "#000";
+            // Clear Screen
+            ctx.fillStyle = "#0a0a0a";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Maze Walls (Dim Green)
-            ctx.fillStyle = "#1b5e20";
-            walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+            // Draw Maze Grid (For depth)
+            ctx.strokeStyle = "#1a1a1a";
+            for(let i=0; i<canvas.width; i+=50) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            }
+            for(let j=0; j<canvas.height; j+=50) {
+                ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(canvas.width, j); ctx.stroke();
+            }
 
-            // Draw Player (Small White Dot)
-            ctx.fillStyle = "#fff";
-            ctx.beginPath();
-            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-            ctx.fill();
+            // Draw Player
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
 
-            // Draw EXACT Monster Image
+            // Draw Monster (EXACT IMAGE)
             if (monsterImg.complete) {
-                ctx.drawImage(monsterImg, monster.x - monster.width/2, monster.y - monster.height/2, monster.width, monster.height);
+                ctx.drawImage(monsterImg, monster.x - monster.w/2, monster.y - monster.h/2, monster.w, monster.h);
             }
         }
+
+        // Handle window resizing
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
 
         update();
     </script>
