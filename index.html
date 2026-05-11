@@ -1,182 +1,161 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Sign Man: Sign Shifter</title>
+    <title>Jumping Spider FPS</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #333; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
-        canvas { background-color: #87CEEB; border: 5px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
-        .ui { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; font-size: 28px; color: white; pointer-events: none; text-shadow: 2px 2px #000; }
+        body { margin: 0; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); }
     </style>
 </head>
 <body>
-    <div class="ui">
-        <div id="p1-ui">P1: ❤️❤️❤️</div>
-        <div id="p2-ui">P2: ❤️❤️❤️</div>
+    <div id="ui">
+        <h1 id="webs">WEBS: 5/5</h1>
+        <p id="status">Target Flies to Refill Web</p>
     </div>
-    <canvas id="gameCanvas"></canvas>
+    <div id="crosshair"></div>
 
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 1000; canvas.height = 700;
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com" } }
+    </script>
 
-        const gravity = 0.6;
-        let weapons = [];
-        let frameCount = 0;
-        let currentMap = { color: "#5d4037", type: "rect" };
+    <script type="module">
+        import * as THREE from 'three';
 
-        class Player {
-            constructor(x, y, id, controls) {
-                this.x = x; this.y = y;
-                this.w = 50; this.h = 90;
-                this.dx = 0; this.dy = 0;
-                this.id = id; this.controls = controls;
-                this.lives = 3; this.hasWeapon = false;
-                this.facing = id === 1 ? 1 : -1;
-            }
+        // Setup Scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-            draw() {
-                ctx.save();
-                ctx.translate(this.x + 25, this.y + 45);
-                if (this.facing === -1) ctx.scale(-1, 1);
-                ctx.fillStyle = "white";
-                ctx.lineCap = "round"; ctx.strokeStyle = "white"; ctx.lineWidth = 14;
+        // Lighting
+        const light = new THREE.AmbientLight(0x404040); scene.add(light);
+        const sun = new THREE.DirectionalLight(0xffffff, 1); sun.position.set(5, 10, 5); scene.add(sun);
 
-                // Head
-                ctx.beginPath(); ctx.arc(0, -35, 10, 0, Math.PI * 2); ctx.fill();
-                // Jerky movement logic
-                let walk = (Math.abs(this.dx) > 0.1) ? (Math.floor(frameCount / 8) % 2) : 0;
-                // Body & Limbs based on sign image
-                ctx.beginPath();
-                ctx.moveTo(0, -20); ctx.lineTo(0, 10); // Torso
-                if (walk === 0) {
-                    ctx.moveTo(0, -10); ctx.lineTo(15, 10); // Arm
-                    ctx.moveTo(0, 10); ctx.lineTo(-10, 40); // Leg 1
-                    ctx.moveTo(0, 10); ctx.lineTo(15, 40);  // Leg 2
-                } else {
-                    ctx.moveTo(0, -10); ctx.lineTo(-15, 5); // Arm bent
-                    ctx.moveTo(0, 10); ctx.lineTo(10, 40);  // Leg forward
-                    ctx.moveTo(0, 10); ctx.lineTo(-15, 30); // Leg back
-                }
-                ctx.stroke();
+        // World: Floor and Obstacles to climb
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: 0x228b22 }));
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
 
-                if (this.hasWeapon) {
-                    this.drawStopSign(25, -10, false);
-                }
-                ctx.restore();
-            }
-
-            drawStopSign(x, y, highlight) {
-                ctx.save();
-                ctx.translate(x, y);
-                ctx.fillStyle = highlight ? "yellow" : "red";
-                ctx.beginPath();
-                for(let i=0; i<8; i++) {
-                    let angle = i * Math.PI / 4;
-                    ctx.lineTo(20 * Math.cos(angle), 20 * Math.sin(angle));
-                }
-                ctx.closePath(); ctx.fill();
-                ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
-                ctx.fillStyle = "white"; ctx.font = "bold 8px Arial";
-                ctx.fillText("STOP", -11, 3);
-                ctx.restore();
-            }
-
-            update() {
-                this.dy += gravity; this.x += this.dx; this.y += this.dy;
-                // Ground Collision
-                if (this.y + this.h > 550 && this.x > 150 && this.x < 850 && this.dy > 0) {
-                    this.y = 550 - this.h; this.dy = 0; this.onGround = true;
-                } else { this.onGround = false; }
-                
-                // Screen wrapping/death
-                if (this.x < -50 || this.x > 1050) { this.lives--; this.reset(); }
-            }
-
-            reset() {
-                this.x = this.id === 1 ? 250 : 700; this.y = 300; this.dx = 0; this.hasWeapon = false;
-                updateUI();
-                if (this.lives <= 0) changeMap();
-            }
+        const boxGeo = new THREE.BoxGeometry(4, 10, 4);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+        for(let i=0; i<10; i++){
+            const wall = new THREE.Mesh(boxGeo, wallMat);
+            wall.position.set(Math.random()*40-20, 5, Math.random()*40-20);
+            scene.add(wall);
         }
 
-        function changeMap() {
-            const maps = [
-                { color: "#5d4037", type: "rect" },   // Brown Hiking
-                { color: "#FFD700", type: "diamond" }, // Yellow Crossing
-                { color: "#0070bb", type: "rect" }    // Blue Info
-            ];
-            currentMap = maps[Math.floor(Math.random() * maps.length)];
-            p1.lives = 3; p2.lives = 3;
-            updateUI();
+        // Flies
+        let flies = [];
+        function spawnFly() {
+            const fly = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshStandardMaterial({ color: 0x00ff00 }));
+            fly.position.set(Math.random()*40-20, Math.random()*15 + 2, Math.random()*40-20);
+            scene.add(fly);
+            flies.push(fly);
         }
+        for(let i=0; i<5; i++) spawnFly();
 
-        const p1 = new Player(250, 400, 1, { left: 'a', right: 'd', jump: 'w', attack: 'f', pick: 'e' });
-        const p2 = new Player(700, 400, 2, { left: 'arrowleft', right: 'arrowright', jump: 'arrowup', attack: '2', pick: '1' });
-
+        // Game State
+        let webs = 5;
+        let isJumping = false;
+        let safetyLine = null;
+        let lineMesh = null;
+        let webAnchor = new THREE.Vector3();
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
         const keys = {};
-        window.addEventListener('keydown', e => {
-            let k = e.key.toLowerCase(); keys[k] = true;
-            if (k === p1.controls.attack && p1.hasWeapon) { hit(p1, p2); }
-            if (k === p2.controls.attack && p2.hasWeapon) { hit(p2, p1); }
+
+        camera.position.y = 1.5;
+
+        // Pointer Lock for FPS
+        document.addEventListener('click', () => renderer.domElement.requestPointerLock());
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement) {
+                camera.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x -= e.movementY * 0.002;
+            }
         });
-        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+        camera.rotation.order = 'YXZ';
 
-        function hit(attacker, victim) {
-            if (Math.abs(attacker.x - victim.x) < 100) {
-                victim.dx = attacker.facing * 20; victim.dy = -10;
-                attacker.hasWeapon = false;
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        function update() {
+            // Movement
+            const moveSpeed = 0.1;
+            if (keys['KeyW']) camera.translateZ(-moveSpeed);
+            if (keys['KeyS']) camera.translateZ(moveSpeed);
+            if (keys['KeyA']) camera.translateX(-moveSpeed);
+            if (keys['KeyD']) camera.translateX(moveSpeed);
+
+            // Jumping & Web Logic
+            if (keys['Space'] && camera.position.y <= 1.6 && !isJumping) {
+                if (webs > 0) {
+                    webs--;
+                    document.getElementById('webs').innerText = `WEBS: ${webs}/5`;
+                    webAnchor.copy(camera.position);
+                    isJumping = true;
+                    velocity.y = 0.2;
+                    
+                    // Visual Web Line
+                    const points = [webAnchor, camera.position];
+                    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+                    lineMesh = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+                    scene.add(lineMesh);
+                } else {
+                    velocity.y = 0.2; // Small jump even without web
+                    isJumping = true;
+                }
             }
+
+            // Gravity & Safety Line Climbing
+            if (isJumping) {
+                camera.position.y += velocity.y;
+                velocity.y -= 0.01;
+
+                if (lineMesh) {
+                    const positions = lineMesh.geometry.attributes.position.array;
+                    positions[3] = camera.position.x;
+                    positions[4] = camera.position.y;
+                    positions[5] = camera.position.z;
+                    lineMesh.geometry.attributes.position.needsUpdate = true;
+
+                    // Hold Space to Climb back up
+                    if (keys['Space'] && camera.position.y < webAnchor.y) {
+                        camera.position.lerp(webAnchor, 0.1);
+                    }
+                }
+
+                if (camera.position.y <= 1.5) {
+                    camera.position.y = 1.5;
+                    isJumping = false;
+                    if (lineMesh) {
+                        scene.remove(lineMesh);
+                        lineMesh = null;
+                    }
+                }
+            }
+
+            // Attack Flies (E)
+            if (keys['KeyE']) {
+                flies.forEach((fly, i) => {
+                    if (camera.position.distanceTo(fly.position) < 3) {
+                        scene.remove(fly);
+                        flies.splice(i, 1);
+                        webs = Math.min(5, webs + 1);
+                        document.getElementById('webs').innerText = `WEBS: ${webs}/5`;
+                        spawnFly();
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(update);
         }
 
-        function updateUI() {
-            document.getElementById('p1-ui').innerText = "P1: " + "❤️".repeat(p1.lives);
-            document.getElementById('p2-ui').innerText = "P2: " + "❤️".repeat(p2.lives);
-        }
-
-        function gameLoop() {
-            frameCount++;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw Dynamic Map
-            ctx.fillStyle = currentMap.color;
-            ctx.beginPath();
-            if (currentMap.type === "rect") {
-                ctx.roundRect(150, 450, 700, 150, 30);
-            } else {
-                ctx.moveTo(500, 350); ctx.lineTo(850, 525); ctx.lineTo(500, 700); ctx.lineTo(150, 525);
-            }
-            ctx.fill(); ctx.strokeStyle = "white"; ctx.lineWidth = 10; ctx.stroke();
-
-            // Weapon Spawning (Max 2)
-            if (weapons.length < 2 && frameCount % 300 === 0) {
-                weapons.push({ x: Math.random() * 600 + 200, y: -50 });
-            }
-
-            weapons.forEach((w, i) => {
-                if (w.y < 520) w.y += 3;
-                let nearP1 = Math.hypot(p1.x - w.x, p1.y - w.y) < 60;
-                let nearP2 = Math.hypot(p2.x - w.x, p2.y - w.y) < 60;
-                
-                p1.drawStopSign(w.x, w.y, nearP1 || nearP2);
-
-                if (nearP1 && keys[p1.controls.pick]) { p1.hasWeapon = true; weapons.splice(i, 1); }
-                else if (nearP2 && keys[p2.controls.pick]) { p2.hasWeapon = true; weapons.splice(i, 1); }
-            });
-
-            // Movement Logic
-            [p1, p2].forEach(p => {
-                p.dx *= 0.85;
-                if (keys[p.controls.left]) { p.dx = -6; p.facing = -1; }
-                if (keys[p.controls.right]) { p.dx = 6; p.facing = 1; }
-                if (keys[p.controls.jump] && p.onGround) p.dy = -15;
-                p.update(); p.draw();
-            });
-
-            requestAnimationFrame(gameLoop);
-        }
-        gameLoop();
+        update();
     </script>
 </body>
 </html>
