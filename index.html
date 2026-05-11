@@ -7,180 +7,280 @@
         body { background: #000; color: yellow; font-family: 'Permanent Marker', cursive; margin: 0; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; background: #000; }
         canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-        #minimap { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); border: 2px solid #00F; }
-        .ui { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); text-align: center; pointer-events: none; z-index: 10; }
+
+        /* MOVED + RESIZED MINIMAP */
+        #minimap {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            top: auto;
+            left: auto;
+            width: 140px;
+            height: 140px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #00F;
+        }
+
+        .ui {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+        }
     </style>
 </head>
+
 <body>
     <div class="ui">
         <h1 style="font-size: 2.5em; margin: 0;">MAINTENANCE MODE</h1>
         <p>SCORE: <span id="score">0</span> | WATCH OUT FOR THE GHOST GANG</p>
     </div>
+
     <div id="container">
         <canvas id="view"></canvas>
-        <canvas id="minimap" width="200" height="200"></canvas>
+        <canvas id="minimap" width="140" height="140"></canvas>
     </div>
 
-    <script>
-        const canvas = document.getElementById('view');
-        const ctx = canvas.getContext('2d');
-        const mCanvas = document.getElementById('minimap');
-        const mCtx = mCanvas.getContext('2d');
+<script>
+const canvas = document.getElementById('view');
+const ctx = canvas.getContext('2d');
+const mCanvas = document.getElementById('minimap');
+const mCtx = mCanvas.getContext('2d');
 
-        const map = [
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
-            [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
-            [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
-            [1,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,1,1],
-            [0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0],
-            [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
-            [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-            [1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,0,1,0,1,1],
-            [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
-            [1,0,1,1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,0,1],
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-        ];
+const map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
+    [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
+    [1,1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,1,1],
+    [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
+    [1,1,1,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,1,1],
+    [0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0],
+    [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
+    [1,1,1,1,0,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1],
+    [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,1],
+    [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
+    [1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,0,1,0,1,1],
+    [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
+    [1,0,1,1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
 
-        let player = { x: 1.5, y: 1.5, dir: 0, score: 0 };
-        let pellets = [];
-        for(let y=0; y<map.length; y++) 
-            for(let x=0; x<map[y].length; x++) 
-                if(map[y][x] === 0) pellets.push({x: x+0.5, y: y+0.5, e: true});
+let player = { x:1.5, y:1.5, dir:0, score:0 };
 
-        let ghosts = [
-            {id: 'Blinky', x: 10.5, y: 9.5, color: '#FF0000', speed: 0.035},
-            {id: 'Pinky', x: 9.5, y: 9.5, color: '#FFB8FF', speed: 0.035},
-            {id: 'Inky', x: 10.5, y: 10.5, color: '#00FFFF', speed: 0.035},
-            {id: 'Clyde', x: 9.5, y: 10.5, color: '#FFB852', speed: 0.035}
-        ];
+let pellets = [];
+for(let y=0;y<map.length;y++)
+for(let x=0;x<map[y].length;x++)
+if(map[y][x]===0)
+pellets.push({x:x+0.5,y:y+0.5,e:true});
 
-        const keys = {};
-        window.onkeydown = (e) => keys[e.code] = true;
-        window.onkeyup = (e) => keys[e.code] = false;
+/* GHOSTS */
+let ghosts = [
+    {id:'Blinky',x:10.5,y:9.5,color:'#FF0000',speed:0.035,dir:{x:1,y:0},home:{x:18,y:1}},
+    {id:'Pinky',x:9.5,y:9.5,color:'#FFB8FF',speed:0.035,dir:{x:-1,y:0},home:{x:1,y:1}},
+    {id:'Inky',x:10.5,y:10.5,color:'#00FFFF',speed:0.035,dir:{x:0,y:1},home:{x:18,y:18}},
+    {id:'Clyde',x:9.5,y:10.5,color:'#FFB852',speed:0.035,dir:{x:0,y:-1},home:{x:1,y:18}}
+];
 
-        function drawPixelGhost(ctx, x, y, size, color) {
-            ctx.fillStyle = color;
-            const p = size / 14; 
-            // Body shape
-            ctx.fillRect(x - 6*p, y - 4*p, 12*p, 10*p);
-            ctx.fillRect(x - 5*p, y - 6*p, 10*p, 12*p);
-            ctx.fillRect(x - 3*p, y - 7*p, 6*p, 14*p);
-            // Feet
-            ctx.fillRect(x - 6*p, y + 6*p, 2*p, 2*p);
-            ctx.fillRect(x - 2*p, y + 6*p, 4*p, 2*p);
-            ctx.fillRect(x + 4*p, y + 6*p, 2*p, 2*p);
-            // Eyes
-            ctx.fillStyle = "white";
-            ctx.fillRect(x - 4*p, y - 3*p, 3*p, 4*p);
-            ctx.fillRect(x + 1*p, y - 3*p, 3*p, 4*p);
-            ctx.fillStyle = "blue";
-            ctx.fillRect(x - 2*p, y - 1*p, 2*p, 2*p);
-            ctx.fillRect(x + 3*p, y - 1*p, 2*p, 2*p);
-        }
+const keys={};
+window.onkeydown=e=>keys[e.code]=true;
+window.onkeyup=e=>keys[e.code]=false;
 
-        function update() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            let moveStep = 0;
-            if (keys['ArrowUp']) moveStep = 0.08;
-            if (keys['ArrowDown']) moveStep = -0.08;
-            if (keys['ArrowLeft']) player.dir -= 0.06;
-            if (keys['ArrowRight']) player.dir += 0.06;
+/* AI HELPERS */
+const dirs=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
 
-            let nx = player.x + Math.cos(player.dir) * moveStep;
-            let ny = player.y + Math.sin(player.dir) * moveStep;
-            if (map[Math.floor(ny)][Math.floor(nx)] === 0) { player.x = nx; player.y = ny; }
+function canMove(x,y){
+    return map[y] && map[y][x]===0;
+}
 
-            pellets.forEach(p => {
-                if(p.e && Math.hypot(p.x - player.x, p.y - player.y) < 0.4) {
-                    p.e = false; player.score += 10;
-                    document.getElementById('score').innerText = player.score;
-                }
-            });
+function chooseDir(g,target){
+    let gx=Math.floor(g.x);
+    let gy=Math.floor(g.y);
+    let options=[];
 
-            ghosts.forEach(g => {
-                let target = {x: player.x, y: player.y};
-                if(g.id === 'Pinky') {
-                    target.x += Math.cos(player.dir) * 4;
-                    target.y += Math.sin(player.dir) * 4;
-                } else if(g.id === 'Inky') {
-                    let blinky = ghosts[0];
-                    let pX = player.x + Math.cos(player.dir) * 2;
-                    let pY = player.y + Math.sin(player.dir) * 2;
-                    target.x = pX + (pX - blinky.x);
-                    target.y = pY + (pY - blinky.y);
-                } else if(g.id === 'Clyde') {
-                    if(Math.hypot(g.x - player.x, g.y - player.y) < 8) target = {x: 1, y: 1};
-                }
-                let angle = Math.atan2(target.y - g.y, target.x - g.x);
-                let gnx = g.x + Math.cos(angle) * g.speed;
-                let gny = g.y + Math.sin(angle) * g.speed;
-                if (map[Math.floor(gny)][Math.floor(gnx)] === 0) { g.x = gnx; g.y = gny; }
-                if (Math.hypot(g.x - player.x, g.y - player.y) < 0.4) location.reload();
-            });
-        }
+    dirs.forEach(d=>{
+        if(d.x===-g.dir.x && d.y===-g.dir.y) return;
 
-        function draw() {
-            const w = canvas.width, h = canvas.height;
-            ctx.fillStyle = "#000"; ctx.fillRect(0,0,w,h);
-            ctx.fillStyle = "#222"; ctx.fillRect(0,h/2,w,h/2);
+        let nx=gx+d.x;
+        let ny=gy+d.y;
 
-            let zBuffer = [];
-            const fov = 0.8;
-            for(let i=0; i<w; i++) {
-                let rayAngle = (player.dir - fov/2) + (i/w) * fov;
-                let dist = 0, hit = false;
-                while(!hit && dist < 20) {
-                    dist += 0.1;
-                    let tx = Math.floor(player.x + Math.cos(rayAngle) * dist);
-                    let ty = Math.floor(player.y + Math.sin(rayAngle) * dist);
-                    if(map[ty] && map[ty][tx] === 1) hit = true;
-                }
-                zBuffer[i] = dist;
-                let lineH = h / (dist * Math.cos(rayAngle - player.dir));
-                ctx.strokeStyle = `rgb(0, 0, ${Math.max(40, 255 - dist*12)})`;
-                ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(i, h/2 - lineH/2); ctx.lineTo(i, h/2 + lineH/2); ctx.stroke();
-            }
+        if(!canMove(nx,ny)) return;
 
-            [...pellets.filter(p=>p.e), ...ghosts].sort((a,b)=>Math.hypot(b.x-player.x, b.y-player.y) - Math.hypot(a.x-player.x, a.y-player.y)).forEach(obj => {
-                let dx = obj.x - player.x, dy = obj.y - player.y;
-                let dist = Math.hypot(dx, dy);
-                let angle = Math.atan2(dy, dx) - player.dir;
-                while(angle < -Math.PI) angle += 2*Math.PI;
-                while(angle > Math.PI) angle -= 2*Math.PI;
-                if(Math.abs(angle) < fov) {
-                    let screenX = (angle / fov + 0.5) * w;
-                    let spriteSize = h / dist;
-                    if(dist < zBuffer[Math.floor(screenX)]) {
-                        if(obj.color) drawPixelGhost(ctx, screenX, h/2, spriteSize, obj.color);
-                        else {
-                            ctx.fillStyle = "yellow";
-                            ctx.beginPath(); ctx.arc(screenX, h/2, spriteSize/15, 0, 7); ctx.fill();
-                        }
-                    }
-                }
-            });
+        options.push({
+            d,
+            dist:Math.hypot(nx-target.x,ny-target.y)
+        });
+    });
 
-            mCtx.clearRect(0,0,200,200);
-            map.forEach((r,y) => r.forEach((v,x) => {
-                if(v) { mCtx.fillStyle="#0000AA"; mCtx.fillRect(x*10, y*10, 10, 10); }
-            }));
-            mCtx.fillStyle="#FFF"; mCtx.fillRect(player.x*10-2, player.y*10-2, 4, 4);
-            ghosts.forEach(g => { mCtx.fillStyle=g.color; mCtx.fillRect(g.x*10-2, g.y*10-2, 4, 4); });
-        }
+    if(!options.length) return;
 
-        function loop() { update(); draw(); requestAnimationFrame(loop); }
-        loop();
-    </script>
+    options.sort((a,b)=>a.dist-b.dist);
+    g.dir=options[0].d;
+}
+
+function drawPixelGhost(ctx,x,y,size,color){
+    ctx.fillStyle=color;
+    const p=size/14;
+    ctx.fillRect(x-6*p,y-4*p,12*p,10*p);
+    ctx.fillRect(x-5*p,y-6*p,10*p,12*p);
+    ctx.fillRect(x-3*p,y-7*p,6*p,14*p);
+}
+
+/* UPDATE */
+function update(){
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+let move=0;
+if(keys.ArrowUp)move=0.08;
+if(keys.ArrowDown)move=-0.08;
+if(keys.ArrowLeft)player.dir-=0.06;
+if(keys.ArrowRight)player.dir+=0.06;
+
+let nx=player.x+Math.cos(player.dir)*move;
+let ny=player.y+Math.sin(player.dir)*move;
+
+if(map[Math.floor(ny)][Math.floor(nx)]===0){
+player.x=nx;player.y=ny;
+}
+
+pellets.forEach(p=>{
+if(p.e&&Math.hypot(p.x-player.x,p.y-player.y)<0.4){
+p.e=false;player.score+=10;
+document.getElementById('score').innerText=player.score;
+}
+});
+
+/* GHOST AI */
+ghosts.forEach(g=>{
+
+let target={x:Math.floor(player.x),y:Math.floor(player.y)};
+
+if(g.id==='Pinky'){
+target.x+=Math.round(Math.cos(player.dir)*4);
+target.y+=Math.round(Math.sin(player.dir)*4);
+}
+
+else if(g.id==='Inky'){
+let b=ghosts[0];
+let px=player.x+Math.cos(player.dir)*2;
+let py=player.y+Math.sin(player.dir)*2;
+target.x=Math.floor(px+(px-b.x));
+target.y=Math.floor(py+(py-b.y));
+}
+
+else if(g.id==='Clyde'){
+if(Math.hypot(g.x-player.x,g.y-player.y)<8){
+target=g.home;
+}
+}
+
+let center=
+Math.abs(g.x-(Math.floor(g.x)+0.5))<0.08 &&
+Math.abs(g.y-(Math.floor(g.y)+0.5))<0.08;
+
+if(center){
+g.x=Math.floor(g.x)+0.5;
+g.y=Math.floor(g.y)+0.5;
+chooseDir(g,target);
+}
+
+let nx=g.x+g.dir.x*g.speed;
+let ny=g.y+g.dir.y*g.speed;
+
+if(canMove(Math.floor(nx),Math.floor(ny))){
+g.x=nx;g.y=ny;
+}
+
+if(Math.hypot(g.x-player.x,g.y-player.y)<0.4){
+location.reload();
+}
+
+});
+
+}
+
+/* DRAW */
+function draw(){
+const w=canvas.width,h=canvas.height;
+ctx.fillStyle="#000";ctx.fillRect(0,0,w,h);
+
+let z=[];
+const fov=0.8;
+
+for(let i=0;i<w;i++){
+let a=(player.dir-fov/2)+(i/w)*fov;
+let d=0,hit=false;
+
+while(!hit&&d<20){
+d+=0.1;
+let tx=Math.floor(player.x+Math.cos(a)*d);
+let ty=Math.floor(player.y+Math.sin(a)*d);
+if(map[ty]&&map[ty][tx])hit=true;
+}
+
+z[i]=d;
+let lh=h/(d*Math.cos(a-player.dir));
+
+ctx.beginPath();
+ctx.moveTo(i,h/2-lh/2);
+ctx.lineTo(i,h/2+lh/2);
+ctx.strokeStyle="rgb(0,0,"+(255-d*12)+")";
+ctx.stroke();
+}
+
+[...pellets.filter(p=>p.e),...ghosts].forEach(o=>{
+let dx=o.x-player.x,dy=o.y-player.y;
+let dist=Math.hypot(dx,dy);
+let ang=Math.atan2(dy,dx)-player.dir;
+
+if(Math.abs(ang)<fov){
+let sx=(ang/fov+0.5)*w;
+if(dist<z[sx]){
+if(o.color){
+drawPixelGhost(ctx,sx,h/2,h/dist,o.color);
+}else{
+ctx.fillStyle="yellow";
+ctx.beginPath();
+ctx.arc(sx,h/2,h/dist/15,0,7);
+ctx.fill();
+}
+}
+}
+});
+
+/* minimap */
+mCtx.clearRect(0,0,200,200);
+map.forEach((r,y)=>r.forEach((v,x)=>{
+if(v){
+mCtx.fillStyle="#00F";
+mCtx.fillRect(x*10,y*10,10,10);
+}
+}));
+
+mCtx.fillStyle="#fff";
+mCtx.fillRect(player.x*10,player.y*10,4,4);
+
+ghosts.forEach(g=>{
+mCtx.fillStyle=g.color;
+mCtx.fillRect(g.x*10,g.y*10,4,4);
+});
+
+}
+
+function loop(){
+update();
+draw();
+requestAnimationFrame(loop);
+}
+loop();
+</script>
 </body>
 </html>
