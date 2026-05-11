@@ -1,163 +1,134 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Pac-Man FPS</title>
-    <link rel="stylesheet" type="text/css" href="https://googleapis.com">
-    <style type="text/css">
-        body { background-color: black; margin: 0; overflow: hidden; font-family: sans-serif; }
-        #game-container { position: relative; width: 800px; height: 400px; margin: 20px auto; border: 4px solid #333; }
-        canvas { display: block; background: #000; }
-        h1 { font-family: 'Permanent Marker', cursive; text-align: center; color: yellow; margin-top: 10px; }
-        #ui { position: absolute; bottom: 10px; width: 100%; text-align: center; color: white; pointer-events: none; }
+    <meta charset="UTF-8">
+    <title>Sign Man Smash</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #87CEEB; font-family: sans-serif; overflow: hidden; }
+        canvas { background-color: #87CEEB; border: 4px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.3); }
+        .ui { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; font-size: 24px; font-weight: bold; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
     </style>
 </head>
 <body>
-    <h1>Pac-Man FPS</h1>
-    <div id="game-container">
-        <canvas id="canvas"></canvas>
-        <div id="ui">Use ARROWS to Move/Turn</div>
+    <div class="ui">
+        <div id="p1-stats">P1: 0%</div>
+        <div id="p2-stats">P2: 0%</div>
     </div>
+    <canvas id="gameCanvas"></canvas>
 
-    <script type="text/javascript" src="https://cloudflare.com"></script>
-    <script type="text/javascript">
-        var NONE = 4, UP = 3, LEFT = 2, DOWN = 1, RIGHT = 11, Pacman = {};
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 600;
 
-        // --- MAP DATA ---
-        var MAP = [
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
-            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-            [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
-            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
-            [1,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,1,1],
-            [0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0],
-            [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,1,1,1],
-            [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
-            [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
-            [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-            [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-            [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
-            [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
-            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-        ];
+        const gravity = 0.5;
 
-        // --- GHOST CLASS (Using your original drawing & logic) ---
-        Pacman.Ghost = function(color, startX, startY) {
-            this.pos = { x: startX * 10, y: startY * 10 };
-            this.color = color;
-            this.dir = Math.random() * Math.PI * 2;
-
-            this.move = function() {
-                var speed = 0.5;
-                var nx = this.pos.x + Math.cos(this.dir) * speed;
-                var ny = this.pos.y + Math.sin(this.dir) * speed;
-                
-                if (MAP[Math.floor(ny/10)][Math.floor(nx/10)] === 0) {
-                    this.pos.x = nx; this.pos.y = ny;
-                } else {
-                    this.dir = Math.random() * Math.PI * 2;
-                }
-            };
-
-            // This is your drawing code, wrapped for 3D projection
-            this.draw3D = function(ctx, pPos, pAngle, screenW, screenH) {
-                var dx = this.pos.x - pPos.x;
-                var dy = this.pos.y - pPos.y;
-                var dist = Math.sqrt(dx*dx + dy*dy);
-                
-                var angleToGhost = Math.atan2(dy, dx) - pAngle;
-                while (angleToGhost < -Math.PI) angleToGhost += Math.PI * 2;
-                while (angleToGhost > Math.PI) angleToGhost -= Math.PI * 2;
-
-                if (Math.abs(angleToGhost) < 1) {
-                    var s = (screenH / dist) * 15;
-                    var x = (angleToGhost + 0.5) * screenW;
-                    var y = (screenH / 2);
-
-                    ctx.save();
-                    ctx.translate(x - s/2, y - s/2);
-                    
-                    // --- YOUR ORIGINAL GHOST DRAWING CODE START ---
-                    ctx.fillStyle = this.color;
-                    ctx.beginPath();
-                    ctx.moveTo(0, s);
-                    ctx.quadraticCurveTo(0, 0, s/2, 0);
-                    ctx.quadraticCurveTo(s, 0, s, s);
-                    ctx.fill();
-                    ctx.fillStyle = "#FFF";
-                    ctx.beginPath();
-                    ctx.arc(s/4, s/4, s/8, 0, Math.PI*2);
-                    ctx.arc(3*s/4, s/4, s/8, 0, Math.PI*2);
-                    ctx.fill();
-                    // --- YOUR ORIGINAL GHOST DRAWING CODE END ---
-                    
-                    ctx.restore();
-                }
-            };
-        };
-
-        // --- GAME ENGINE ---
-        var canvas = document.getElementById("canvas");
-        var ctx = canvas.getContext("2d");
-        canvas.width = 800; canvas.height = 400;
-
-        var player = { x: 15, y: 15, angle: 0 };
-        var keys = {};
-        var ghosts = [
-            new Pacman.Ghost("#FF0000", 9, 9),
-            new Pacman.Ghost("#FFB8FF", 10, 9),
-            new Pacman.Ghost("#00FFFF", 8, 9)
-        ];
-
-        window.onkeydown = function(e) { keys[e.keyCode] = true; };
-        window.onkeyup = function(e) { keys[e.keyCode] = false; };
-
-        function update() {
-            if (keys[37]) player.angle -= 0.08;
-            if (keys[39]) player.angle += 0.08;
-            var speed = 0.8;
-            if (keys[38]) {
-                var nx = player.x + Math.cos(player.angle) * speed;
-                var ny = player.y + Math.sin(player.angle) * speed;
-                if (MAP[Math.floor(ny/10)][Math.floor(nx/10)] === 0) { player.x = nx; player.y = ny; }
+        class Player {
+            constructor(x, y, id, controls) {
+                this.x = x; this.y = y;
+                this.width = 40; this.height = 60;
+                this.dx = 0; this.dy = 0;
+                this.onGround = false;
+                this.id = id;
+                this.controls = controls;
+                this.damage = 0;
+                this.hasWeapon = false;
             }
-            ghosts.forEach(g => g.move());
-        }
 
-        function draw() {
-            ctx.fillStyle = "#111"; ctx.fillRect(0, 0, 800, 200); // Ceiling
-            ctx.fillStyle = "#222"; ctx.fillRect(0, 200, 800, 200); // Floor
+            draw() {
+                ctx.strokeStyle = "black";
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                // Draw "Sign Man" head
+                ctx.arc(this.x + 20, this.y + 10, 8, 0, Math.PI * 2);
+                // Body
+                ctx.moveTo(this.x + 20, this.y + 18); ctx.lineTo(this.x + 20, this.y + 40);
+                // Arms
+                ctx.moveTo(this.x + 20, this.y + 25); ctx.lineTo(this.x + 5, this.y + 35);
+                ctx.moveTo(this.x + 20, this.y + 25); ctx.lineTo(this.x + 35, this.y + 35);
+                // Legs
+                ctx.moveTo(this.x + 20, this.y + 40); ctx.lineTo(this.x + 10, this.y + 60);
+                ctx.moveTo(this.x + 20, this.y + 40); ctx.lineTo(this.x + 30, this.y + 60);
+                ctx.stroke();
 
-            // Raycasting Walls
-            for (var i = 0; i < 800; i += 4) {
-                var rayAngle = (player.angle - 0.5) + (i / 800);
-                var dist = 0;
-                while (dist < 150) {
-                    dist += 1;
-                    var tx = Math.floor((player.x + Math.cos(rayAngle) * dist) / 10);
-                    var ty = Math.floor((player.y + Math.sin(rayAngle) * dist) / 10);
-                    if (MAP[ty] && MAP[ty][tx] === 1) {
-                        var h = (400 / dist) * 10;
-                        ctx.fillStyle = "rgb(0,0," + Math.max(50, 255 - dist*2) + ")";
-                        ctx.fillRect(i, 200 - h/2, 4, h);
-                        break;
-                    }
+                if (this.hasWeapon) {
+                    ctx.fillStyle = "red";
+                    ctx.beginPath(); ctx.arc(this.x + 40, this.y + 25, 12, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = "white"; ctx.font = "8px Arial"; ctx.fillText("STOP", this.x + 30, this.y + 28);
                 }
             }
-            // Draw Ghosts in 3D
-            ghosts.forEach(g => g.draw3D(ctx, player, player.angle, 800, 400));
+
+            update() {
+                this.dy += gravity;
+                this.x += this.dx;
+                this.y += this.dy;
+
+                // Collision with the "Yellow Sign" platform
+                if (this.y + this.height > 450 && this.x > 250 && this.x < 550 && this.dy > 0) {
+                    this.y = 450 - this.height;
+                    this.dy = 0;
+                    this.onGround = true;
+                } else { this.onGround = false; }
+
+                // KO logic
+                if (this.x < -50 || this.x > 850 || this.y > 650) {
+                    this.x = this.id === 1 ? 300 : 500;
+                    this.y = 200;
+                    this.damage = 0;
+                    updateUI();
+                }
+            }
         }
 
-        function loop() {
-            update();
-            draw();
-            requestAnimationFrame(loop);
+        const p1 = new Player(300, 200, 1, { left: 'a', right: 'd', jump: ' ', attack: 'f', pick: 'e' });
+        const p2 = new Player(500, 200, 2, { left: 'arrowleft', right: 'arrowright', jump: 'arrowup', attack: '2', pick: '1' });
+
+        const keys = {};
+        window.addEventListener('keydown', e => {
+            const key = e.key.toLowerCase();
+            keys[key] = true;
+            // Handling picking up weapons and attacking
+            if (key === p1.controls.pick) p1.hasWeapon = true;
+            if (key === p2.controls.pick) p2.hasWeapon = true;
+            if (key === p1.controls.attack && p1.hasWeapon) { p2.damage += 10; p2.dx = 10; updateUI(); }
+            if (key === p2.controls.attack && p2.hasWeapon) { p1.damage += 10; p1.dx = -10; updateUI(); }
+        });
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+        function updateUI() {
+            document.getElementById('p1-stats').innerText = `P1: ${p1.damage}%`;
+            document.getElementById('p2-stats').innerText = `P2: ${p2.damage}%`;
         }
-        loop();
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the "Walking Sign" stage
+            ctx.fillStyle = "#FFD700";
+            ctx.save();
+            ctx.translate(400, 450);
+            ctx.rotate(45 * Math.PI / 180);
+            ctx.fillRect(-150, -150, 300, 300);
+            ctx.restore();
+
+            // P1 Input
+            p1.dx = 0;
+            if (keys[p1.controls.left]) p1.dx = -5;
+            if (keys[p1.controls.right]) p1.dx = 5;
+            if (keys[p1.controls.jump] && p1.onGround) p1.dy = -12;
+
+            // P2 Input
+            p2.dx = 0;
+            if (keys[p2.controls.left]) p2.dx = -5;
+            if (keys[p2.controls.right]) p2.dx = 5;
+            if (keys[p2.controls.jump] && p2.onGround) p2.dy = -12;
+
+            p1.update(); p2.update();
+            p1.draw(); p2.draw();
+            requestAnimationFrame(gameLoop);
+        }
+        gameLoop();
     </script>
 </body>
 </html>
