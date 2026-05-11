@@ -1,138 +1,131 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>THE MAZE: FIRST PERSON</title>
+    <title>8-BIT STALKER</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: black; font-family: 'Arial', sans-serif; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; z-index: 100; pointer-events: none; }
-        #freeze-warning { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: red; font-size: 45px; font-weight: bold; display: none; text-align: center; text-shadow: 3px 3px black; }
-        #game-over { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: red; display: none; align-items: center; justify-content: center; z-index: 200; }
+        body { margin: 0; overflow: hidden; background-color: black; }
+        /* This creates the 8-bit pixelated effect */
+        canvas { 
+            width: 100vw; 
+            height: 100vh; 
+            image-rendering: pixelated; 
+            image-rendering: crisp-edges;
+        }
+        #ui { 
+            position: absolute; top: 10px; left: 10px; color: #00ff00; 
+            font-family: 'Courier New', monospace; font-size: 20px;
+            text-shadow: 2px 2px black; pointer-events: none;
+        }
     </style>
 </head>
 <body>
     <div id="ui">
-        <b>WASD:</b> Move | <b>Shift:</b> Sprint<br>
-        <b>STATUS:</b> <span id="status">SAFE</span><br>
-        <i>STILLNESS TIMER: <span id="timer">10</span>s</i>
+        <b>[ SYSTEM: ]</b> <span id="status">WANDERING</span><br>
+        <b>[ WASD:  ]</b> MOVE<br>
+        <b>[ CLICK: ]</b> START
     </div>
-    <div id="freeze-warning">DON'T MOVE!</div>
-    <div id="game-over"><h1>CAUGHT.</h1></div>
 
     <script src="https://cloudflare.com"></script>
     <script>
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x050505);
-        scene.fog = new THREE.Fog(0x050505, 1, 60);
+        scene.fog = new THREE.Fog(0x050505, 1, 40);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        // Low resolution renderer for 8-bit look
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth / 4, window.innerHeight / 4, false);
         document.body.appendChild(renderer.domElement);
 
-        // --- POWERFUL LIGHTING ---
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-        const headlamp = new THREE.PointLight(0xffffff, 1, 30);
-        camera.add(headlamp);
+        // --- 8-BIT WORLD ---
+        const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambient);
+        const point = new THREE.PointLight(0x00ff00, 1, 20); // Retro Green tint
+        camera.add(point);
         scene.add(camera);
 
-        // --- MAZE ---
-        const mazeSize = 30, wallSize = 8;
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-        const wallGeo = new THREE.BoxGeometry(wallSize, 12, wallSize);
+        // Blocky Maze Walls
+        const mazeSize = 25, wallSize = 6;
+        const wallMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+        const wallGeo = new THREE.BoxGeometry(wallSize, 10, wallSize);
 
         for(let x=0; x<mazeSize; x++) {
             for(let z=0; z<mazeSize; z++) {
-                if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || (x%4==0 && z%4==0)) {
+                if(x==0 || x==mazeSize-1 || z==0 || z==mazeSize-1 || (x%3==0 && z%3==0)) {
                     const wall = new THREE.Mesh(wallGeo, wallMat);
-                    wall.position.set(x*wallSize - 120, 6, z*wallSize - 120);
+                    wall.position.set(x*wallSize - 75, 5, z*wallSize - 75);
                     scene.add(wall);
                 }
             }
         }
-        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshPhongMaterial({color: 0x050505})).rotateX(-Math.PI/2));
+        
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshPhongMaterial({color: 0x111111}));
+        floor.rotation.x = -Math.PI/2;
+        scene.add(floor);
 
-        // --- MONSTERS WITH YOUR IMAGES ---
+        // --- THE MONSTER (EXACT IMAGE) ---
         const loader = new THREE.TextureLoader();
-        const monsterImgs = [
-            'https://deepai.org', // Skull
-            'https://deepai.org'  // Black Face
-        ];
+        // Replacing this URL with the exact monster image link
+        const monsterTex = loader.load('https://deepai.org');
+        const monsterMat = new THREE.SpriteMaterial({ map: monsterTex });
+        const monster = new THREE.Sprite(monsterMat);
+        monster.scale.set(6, 10, 1);
+        monster.position.set(20, 5, 20);
+        monster.userData = { state: "WANDER", target: new THREE.Vector3(20, 5, 20) };
+        scene.add(monster);
 
-        function makeMonster(imgUrl, x, z) {
-            const tex = loader.load(imgUrl);
-            const mat = new THREE.SpriteMaterial({ map: tex });
-            const s = new THREE.Sprite(mat);
-            s.scale.set(6, 10, 1);
-            s.position.set(x, 5, z);
-            s.userData = { state: "WANDER", target: new THREE.Vector3(x, 5, z), stillTimer: 0 };
-            scene.add(s);
-            return s;
-        }
-        const monsters = [makeMonster(monsterImgs[0], 40, 40), makeMonster(monsterImgs[1], -40, -40)];
-
-        // --- CONTROLS ---
-        let yaw = 0, pitch = 0, playerPos = new THREE.Vector3(-100, 2, -100);
+        // --- PLAYER & CONTROLS ---
+        let yaw = 0, playerPos = new THREE.Vector3(0, 2, 0);
         const keys = {};
         document.body.addEventListener('click', () => renderer.domElement.requestPointerLock());
         window.addEventListener('keydown', (e) => keys[e.code] = true);
         window.addEventListener('keyup', (e) => keys[e.code] = false);
         document.addEventListener('mousemove', (e) => {
-            if(document.pointerLockElement) {
-                yaw -= e.movementX*0.003; pitch -= e.movementY*0.003;
-                pitch = Math.max(-1.2, Math.min(1.2, pitch));
-            }
+            if(document.pointerLockElement) yaw -= e.movementX * 0.004;
         });
 
         // --- GAME LOOP ---
         function animate() {
             requestAnimationFrame(animate);
-            const isMoving = keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD'];
-            const speed = keys['ShiftLeft'] ? 0.4 : 0.2;
-            
-            if(isMoving) {
+
+            // Movement
+            if(keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']) {
                 const move = new THREE.Vector3();
-                if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
-                if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
+                if(keys['KeyW']) move.z -= 0.15; if(keys['KeyS']) move.z += 0.15;
+                if(keys['KeyA']) move.x -= 0.15; if(keys['KeyD']) move.x += 0.15;
                 move.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
                 playerPos.add(move);
             }
 
             camera.position.copy(playerPos);
-            camera.rotation.set(pitch, yaw, 0, 'YXZ');
+            camera.rotation.y = yaw;
 
-            let detected = false;
-            monsters.forEach((m) => {
-                const dist = m.position.distanceTo(playerPos);
-                
-                if(m.userData.state === "WANDER") {
-                    if(m.position.distanceTo(m.userData.target) < 4) {
-                        m.userData.target.set((Math.random()-0.5)*200, 5, (Math.random()-0.5)*200);
-                    }
-                    m.position.add(new THREE.Vector3().subVectors(m.userData.target, m.position).normalize().multiplyScalar(0.08));
-                    if(dist < 25) { m.userData.state = "SPOTTED"; m.userData.stillTimer = Date.now(); }
-                } 
-                else if(m.userData.state === "SPOTTED") {
-                    detected = true;
-                    let elapsed = Math.floor((Date.now() - m.userData.stillTimer)/1000);
-                    document.getElementById('timer').innerText = 10 - elapsed;
+            // MONSTER AI
+            const dist = monster.position.distanceTo(playerPos);
+            const statusLabel = document.getElementById('status');
 
-                    if(isMoving) { // CHARGE IF YOU MOVE
-                        m.position.add(new THREE.Vector3().subVectors(playerPos, m.position).normalize().multiplyScalar(0.5));
-                    }
-
-                    if(dist < 2) { 
-                        document.getElementById('game-over').style.display='flex';
-                        setTimeout(()=>location.reload(), 2500); 
-                    }
-                    if(elapsed >= 10) { 
-                        m.userData.state = "WANDER"; 
-                        m.position.set((Math.random()-0.5)*180, 5, (Math.random()-0.5)*180);
-                    }
+            if(monster.userData.state === "WANDER") {
+                statusLabel.innerText = "WANDERING";
+                if(monster.position.distanceTo(monster.userData.target) < 3) {
+                    monster.userData.target.set((Math.random()-0.5)*120, 5, (Math.random()-0.5)*120);
                 }
-            });
+                const dir = new THREE.Vector3().subVectors(monster.userData.target, monster.position).normalize();
+                monster.position.add(dir.multiplyScalar(0.05));
 
-            document.getElementById('status').innerText = detected ? "SPOTTED!" : "SAFE";
-            document.getElementById('freeze-warning').style.display = detected ? 'block' : 'none';
+                if(dist < 20) { monster.userData.state = "FOLLOW"; }
+            } 
+            else if(monster.userData.state === "FOLLOW") {
+                statusLabel.innerText = "FOLLOWING";
+                const chaseDir = new THREE.Vector3().subVectors(playerPos, monster.position).normalize();
+                monster.position.add(chaseDir.multiplyScalar(0.09));
+
+                if(dist < 1.5) {
+                    alert("THE STALKER GOT YOU.");
+                    location.reload();
+                }
+            }
+
             renderer.render(scene, camera);
         }
         animate();
