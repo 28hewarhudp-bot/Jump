@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sign Man Showdown</title>
+    <title>Sign Man: Sign Shifter</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #4a3728; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
-        canvas { background-color: #87CEEB; border: 10px solid #fff; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
-        .ui { position: absolute; top: 30px; width: 100%; display: flex; justify-content: space-around; font-size: 32px; color: white; pointer-events: none; text-shadow: 3px 3px #000; }
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #333; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        canvas { background-color: #87CEEB; border: 5px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        .ui { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; font-size: 28px; color: white; pointer-events: none; text-shadow: 2px 2px #000; }
     </style>
 </head>
 <body>
@@ -19,150 +19,161 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = 1000;
-        canvas.height = 700;
+        canvas.width = 1000; canvas.height = 700;
 
         const gravity = 0.6;
         let weapons = [];
         let frameCount = 0;
+        let currentMap = { color: "#5d4037", type: "rect" };
 
         class Player {
             constructor(x, y, id, controls) {
                 this.x = x; this.y = y;
-                this.w = 50; this.h = 80;
+                this.w = 50; this.h = 90;
                 this.dx = 0; this.dy = 0;
-                this.id = id;
-                this.controls = controls;
-                this.lives = 3;
-                this.hasWeapon = false;
+                this.id = id; this.controls = controls;
+                this.lives = 3; this.hasWeapon = false;
                 this.facing = id === 1 ? 1 : -1;
-                this.animFrame = 0; // For Game & Watch jerky movement
             }
 
             draw() {
                 ctx.save();
-                ctx.translate(this.x + this.w/2, this.y + this.h/2);
+                ctx.translate(this.x + 25, this.y + 45);
                 if (this.facing === -1) ctx.scale(-1, 1);
-
                 ctx.fillStyle = "white";
+                ctx.lineCap = "round"; ctx.strokeStyle = "white"; ctx.lineWidth = 14;
+
                 // Head
-                ctx.beginPath(); ctx.arc(0, -30, 12, 0, Math.PI * 2); ctx.fill();
-                
-                // Jerky "Game & Watch" Style Animation
-                let offset = (Math.abs(this.dx) > 0.1) ? (Math.floor(frameCount / 10) % 2) * 10 : 0;
-                
-                // Body & Legs
-                ctx.fillRect(-10, -15, 20, 35); // Torso
-                ctx.fillRect(-15 + offset, 20, 12, 20); // Leg 1
-                ctx.fillRect(5 - offset, 20, 12, 20);  // Leg 2
-                
-                // Arms
-                ctx.fillRect(10, -10, 20, 10); // Arm
+                ctx.beginPath(); ctx.arc(0, -35, 10, 0, Math.PI * 2); ctx.fill();
+                // Jerky movement logic
+                let walk = (Math.abs(this.dx) > 0.1) ? (Math.floor(frameCount / 8) % 2) : 0;
+                // Body & Limbs based on sign image
+                ctx.beginPath();
+                ctx.moveTo(0, -20); ctx.lineTo(0, 10); // Torso
+                if (walk === 0) {
+                    ctx.moveTo(0, -10); ctx.lineTo(15, 10); // Arm
+                    ctx.moveTo(0, 10); ctx.lineTo(-10, 40); // Leg 1
+                    ctx.moveTo(0, 10); ctx.lineTo(15, 40);  // Leg 2
+                } else {
+                    ctx.moveTo(0, -10); ctx.lineTo(-15, 5); // Arm bent
+                    ctx.moveTo(0, 10); ctx.lineTo(10, 40);  // Leg forward
+                    ctx.moveTo(0, 10); ctx.lineTo(-15, 30); // Leg back
+                }
+                ctx.stroke();
 
                 if (this.hasWeapon) {
-                    // Draw Stop Sign Weapon
-                    ctx.fillStyle = "red";
-                    ctx.beginPath(); ctx.moveTo(25, -20);
-                    for(let i=0; i<8; i++) ctx.lineTo(25 + 25*Math.cos(i*Math.PI/4), -40 + 25*Math.sin(i*Math.PI/4));
-                    ctx.fill();
-                    ctx.fillStyle = "white"; ctx.font = "bold 10px Arial"; ctx.fillText("STOP", 12, -37);
+                    this.drawStopSign(25, -10, false);
                 }
                 ctx.restore();
             }
 
+            drawStopSign(x, y, highlight) {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.fillStyle = highlight ? "yellow" : "red";
+                ctx.beginPath();
+                for(let i=0; i<8; i++) {
+                    let angle = i * Math.PI / 4;
+                    ctx.lineTo(20 * Math.cos(angle), 20 * Math.sin(angle));
+                }
+                ctx.closePath(); ctx.fill();
+                ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
+                ctx.fillStyle = "white"; ctx.font = "bold 8px Arial";
+                ctx.fillText("STOP", -11, 3);
+                ctx.restore();
+            }
+
             update() {
-                this.dy += gravity;
-                this.x += this.dx;
-                this.y += this.dy;
-
-                // Stage Collision (Bigger Arena)
+                this.dy += gravity; this.x += this.dx; this.y += this.dy;
+                // Ground Collision
                 if (this.y + this.h > 550 && this.x > 150 && this.x < 850 && this.dy > 0) {
-                    this.y = 550 - this.h;
-                    this.dy = 0;
-                    this.onGround = true;
+                    this.y = 550 - this.h; this.dy = 0; this.onGround = true;
                 } else { this.onGround = false; }
+                
+                // Screen wrapping/death
+                if (this.x < -50 || this.x > 1050) { this.lives--; this.reset(); }
+            }
 
-                // Borders
-                if (this.x < 0) this.x = 0; if (this.x > canvas.width - this.w) this.x = canvas.width - this.w;
-
-                // Pick up weapon
-                weapons.forEach((w, i) => {
-                    if (Math.abs(this.x - w.x) < 40 && Math.abs(this.y - w.y) < 40) {
-                        if ((this.id === 1 && keys[this.controls.pick]) || (this.id === 2 && keys[this.controls.pick])) {
-                            this.hasWeapon = true;
-                            weapons.splice(i, 1);
-                        }
-                    }
-                });
+            reset() {
+                this.x = this.id === 1 ? 250 : 700; this.y = 300; this.dx = 0; this.hasWeapon = false;
+                updateUI();
+                if (this.lives <= 0) changeMap();
             }
         }
 
-        const p1 = new Player(200, 400, 1, { left: 'a', right: 'd', jump: ' ', attack: 'f', pick: 'e' });
-        const p2 = new Player(750, 400, 2, { left: 'arrowleft', right: 'arrowright', jump: 'arrowup', attack: '2', pick: '1' });
+        function changeMap() {
+            const maps = [
+                { color: "#5d4037", type: "rect" },   // Brown Hiking
+                { color: "#FFD700", type: "diamond" }, // Yellow Crossing
+                { color: "#0070bb", type: "rect" }    // Blue Info
+            ];
+            currentMap = maps[Math.floor(Math.random() * maps.length)];
+            p1.lives = 3; p2.lives = 3;
+            updateUI();
+        }
+
+        const p1 = new Player(250, 400, 1, { left: 'a', right: 'd', jump: 'w', attack: 'f', pick: 'e' });
+        const p2 = new Player(700, 400, 2, { left: 'arrowleft', right: 'arrowright', jump: 'arrowup', attack: '2', pick: '1' });
 
         const keys = {};
         window.addEventListener('keydown', e => {
-            let k = e.key.toLowerCase();
-            keys[k] = true;
-            
-            // Attack logic
-            if (k === p1.controls.attack && p1.hasWeapon && Math.abs(p1.x - p2.x) < 80) {
-                p2.lives--; p2.dx = 15; p2.dy = -10; p1.hasWeapon = false; updateUI();
-            }
-            if (k === p2.controls.attack && p2.hasWeapon && Math.abs(p2.x - p1.x) < 80) {
-                p1.lives--; p1.dx = -15; p1.dy = -10; p2.hasWeapon = false; updateUI();
-            }
+            let k = e.key.toLowerCase(); keys[k] = true;
+            if (k === p1.controls.attack && p1.hasWeapon) { hit(p1, p2); }
+            if (k === p2.controls.attack && p2.hasWeapon) { hit(p2, p1); }
         });
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
+        function hit(attacker, victim) {
+            if (Math.abs(attacker.x - victim.x) < 100) {
+                victim.dx = attacker.facing * 20; victim.dy = -10;
+                attacker.hasWeapon = false;
+            }
+        }
+
         function updateUI() {
-            document.getElementById('p1-ui').innerText = "P1: " + "❤️".repeat(Math.max(0, p1.lives));
-            document.getElementById('p2-ui').innerText = "P2: " + "❤️".repeat(Math.max(0, p2.lives));
-            if (p1.lives <= 0) alert("PLAYER 2 WINS!");
-            if (p2.lives <= 0) alert("PLAYER 1 WINS!");
+            document.getElementById('p1-ui').innerText = "P1: " + "❤️".repeat(p1.lives);
+            document.getElementById('p2-ui').innerText = "P2: " + "❤️".repeat(p2.lives);
         }
-
-        function spawnWeapon() {
-            weapons.push({ x: Math.random() * 600 + 200, y: -50, dy: 3 });
-        }
-
-        setInterval(spawnWeapon, 5000);
 
         function gameLoop() {
             frameCount++;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Brown Sign Arena
-            ctx.fillStyle = "#5d4037"; // Brown background of the sign
+            // Draw Dynamic Map
+            ctx.fillStyle = currentMap.color;
             ctx.beginPath();
-            ctx.roundRect(150, 450, 700, 150, 30);
-            ctx.fill();
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 10;
-            ctx.stroke();
+            if (currentMap.type === "rect") {
+                ctx.roundRect(150, 450, 700, 150, 30);
+            } else {
+                ctx.moveTo(500, 350); ctx.lineTo(850, 525); ctx.lineTo(500, 700); ctx.lineTo(150, 525);
+            }
+            ctx.fill(); ctx.strokeStyle = "white"; ctx.lineWidth = 10; ctx.stroke();
 
-            // Draw Weapons
-            ctx.fillStyle = "red";
-            weapons.forEach(w => {
-                w.y += w.dy;
-                if (w.y > 510) { w.y = 510; w.dy = 0; }
-                ctx.beginPath(); ctx.arc(w.x, w.y, 15, 0, Math.PI*2); ctx.fill();
+            // Weapon Spawning (Max 2)
+            if (weapons.length < 2 && frameCount % 300 === 0) {
+                weapons.push({ x: Math.random() * 600 + 200, y: -50 });
+            }
+
+            weapons.forEach((w, i) => {
+                if (w.y < 520) w.y += 3;
+                let nearP1 = Math.hypot(p1.x - w.x, p1.y - w.y) < 60;
+                let nearP2 = Math.hypot(p2.x - w.x, p2.y - w.y) < 60;
+                
+                p1.drawStopSign(w.x, w.y, nearP1 || nearP2);
+
+                if (nearP1 && keys[p1.controls.pick]) { p1.hasWeapon = true; weapons.splice(i, 1); }
+                else if (nearP2 && keys[p2.controls.pick]) { p2.hasWeapon = true; weapons.splice(i, 1); }
             });
 
-            // Player 1 Movement
-            p1.dx *= 0.8;
-            if (keys[p1.controls.left]) { p1.dx = -6; p1.facing = -1; }
-            if (keys[p1.controls.right]) { p1.dx = 6; p1.facing = 1; }
-            if (keys[p1.controls.jump] && p1.onGround) p1.dy = -15;
+            // Movement Logic
+            [p1, p2].forEach(p => {
+                p.dx *= 0.85;
+                if (keys[p.controls.left]) { p.dx = -6; p.facing = -1; }
+                if (keys[p.controls.right]) { p.dx = 6; p.facing = 1; }
+                if (keys[p.controls.jump] && p.onGround) p.dy = -15;
+                p.update(); p.draw();
+            });
 
-            // Player 2 Movement
-            p2.dx *= 0.8;
-            if (keys[p2.controls.left]) { p2.dx = -6; p2.facing = -1; }
-            if (keys[p2.controls.right]) { p2.dx = 6; p2.facing = 1; }
-            if (keys[p2.controls.jump] && p2.onGround) p2.dy = -15;
-
-            p1.update(); p2.update();
-            p1.draw(); p2.draw();
             requestAnimationFrame(gameLoop);
         }
         gameLoop();
