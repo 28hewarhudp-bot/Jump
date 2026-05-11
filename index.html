@@ -1,18 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ghost Squad: Scatter & Chase</title>
+    <title>Arcade AI: Target Tile System</title>
     <style>
         body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; }
         .ui { margin-top: 20px; font-size: 24px; letter-spacing: 3px; }
-        canvas { background: #000; margin-top: 10px; border: 2px solid #222; }
+        canvas { background: #000; margin-top: 10px; border: 2px solid #333; }
         #status { font-weight: bold; }
-        .scatter { color: #00ff00; }
-        .chase { color: #ff0000; }
     </style>
 </head>
 <body>
-    <div class="ui">STATUS: <span id="status">SCATTER</span></div>
+    <div class="ui">MODE: <span id="status">SCATTER</span></div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -25,7 +23,6 @@ const MAP_H = 21;
 canvas.width = MAP_W * TILE;
 canvas.height = MAP_H * TILE;
 
-// 1: Wall, 0: Pellet, 2: Power Pellet, 3: House
 const layout = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,2,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,1],
@@ -54,15 +51,15 @@ let pellets = [];
 layout.forEach((row, y) => row.forEach((v, x) => { if(v===0 || v===2) pellets.push({x, y, v}); }));
 
 let ghosts = [
-    { x: 9, y: 9, color: '#f00', dx: 1, dy: 0, home: {x: 18, y: 0} },  // Red: Top-Right
-    { x: 8, y: 9, color: '#ffb8ff', dx: -1, dy: 0, home: {x: 0, y: 0} }, // Pink: Top-Left
-    { x: 9, y: 8, color: '#0ff', dx: 0, dy: -1, home: {x: 18, y: 20} }, // Cyan: Bottom-Right
-    { x: 10, y: 9, color: '#ffb852', dx: 0, dy: 1, home: {x: 0, y: 20} } // Orange: Bottom-Left
+    { name: 'Blinky', x: 9, y: 7, color: '#f00', dx: 1, dy: 0, home: {x: 18, y: 0} },
+    { name: 'Pinky', x: 9, y: 9, color: '#ffb8ff', dx: -1, dy: 0, home: {x: 0, y: 0} },
+    { name: 'Inky', x: 8, y: 9, color: '#0ff', dx: 0, dy: -1, home: {x: 18, y: 20} },
+    { name: 'Clyde', x: 10, y: 9, color: '#ffb852', dx: 0, dy: 1, home: {x: 0, y: 20} }
 ];
 
 let pacman = { x: 9, y: 15, dx: 0, dy: 0, state: 'HUNT', timer: 0 };
+let currentMode = 'SCATTER';
 let modeTimer = 0;
-let currentMode = 'SCATTER'; // Starts in Scatter mode
 
 function isWall(x, y) {
     let tx = Math.round(x), ty = Math.round(y);
@@ -71,57 +68,82 @@ function isWall(x, y) {
 
 function getDist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
 
-function gameLoop() {
-    // --- MODE SWAPPER ---
-    modeTimer++;
-    if (currentMode === 'SCATTER' && modeTimer > 420) { // ~7 seconds
-        currentMode = 'CHASE'; modeTimer = 0;
-    } else if (currentMode === 'CHASE' && modeTimer > 1200) { // ~20 seconds
-        currentMode = 'SCATTER'; modeTimer = 0;
-    }
+function getTargetTile(ghost) {
+    if (currentMode === 'SCATTER') return ghost.home;
     
-    let statusEl = document.getElementById('status');
-    statusEl.innerText = pacman.state === 'FLEE' ? "POWER UP!" : currentMode;
-    statusEl.className = currentMode.toLowerCase();
+    // CHASE MODE PERSONALITIES
+    switch(ghost.name) {
+        case 'Blinky': return {x: pacman.x, y: pacman.y};
+        case 'Pinky':  return {x: pacman.x + (pacman.dx * 4), y: pacman.y + (pacman.dy * 4)};
+        case 'Inky':
+            let blinky = ghosts[0];
+            let pivotX = pacman.x + (pacman.dx * 2);
+            let pivotY = pacman.y + (pacman.dy * 2);
+            return { x: pivotX + (pivotX - blinky.x), y: pivotY + (pivotY - blinky.y) };
+        case 'Clyde':
+            return getDist(ghost.x, ghost.y, pacman.x, pacman.y) > 8 ? {x: pacman.x, y: pacman.y} : ghost.home;
+        default: return ghost.home;
+    }
+}
 
-    // --- PAC-MAN AUTO-AI ---
+function updateGhost(g) {
+    // Only turn when centered on a tile
+    if (Math.abs(g.x - Math.round(g.x)) < 0.1 && Math.abs(g.y - Math.round(g.y)) < 0.1) {
+        g.x = Math.round(g.x); g.y = Math.round(g.y);
+        
+        let target = getTargetTile(g);
+        let moves = [
+            {x: 0, y: -1}, // Up
+            {x: -1, y: 0}, // Left
+            {x: 0, y: 1},  // Down
+            {x: 1, y: 0}   // Right
+        ].filter(m => {
+            // 1. No Walls
+            if (isWall(g.x + m.x, g.y + m.y)) return false;
+            // 2. No 180-degree turns
+            if (m.x === -g.dx && m.y === -g.dy) return false;
+            return true;
+        });
+
+        if (moves.length > 0) {
+            // Intersection Logic: Pick the tile closest to the Target Tile
+            moves.sort((a, b) => getDist(g.x + a.x, g.y + a.y, target.x, target.y) - getDist(g.x + b.x, g.y + b.y, target.x, target.y));
+            g.dx = moves[0].x; g.dy = moves[0].y;
+        }
+    }
+    g.x += g.dx * 0.08; g.y += g.dy * 0.08;
+    
+    // Teleport logic
+    if (g.x < 0) g.x = MAP_W - 1; if (g.x > MAP_W - 1) g.x = 0;
+}
+
+function gameLoop() {
+    // Mode Switching
+    modeTimer++;
+    if (currentMode === 'SCATTER' && modeTimer > 420) { currentMode = 'CHASE'; modeTimer = 0; }
+    else if (currentMode === 'CHASE' && modeTimer > 1200) { currentMode = 'SCATTER'; modeTimer = 0; }
+    document.getElementById('status').innerText = currentMode;
+
+    // Pac-man Auto AI (Unchanged)
     if (Math.abs(pacman.x - Math.round(pacman.x)) < 0.1 && Math.abs(pacman.y - Math.round(pacman.y)) < 0.1) {
         pacman.x = Math.round(pacman.x); pacman.y = Math.round(pacman.y);
         let moves = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].filter(m => !isWall(pacman.x + m.x, pacman.y + m.y));
-        
         let nearestG = ghosts.reduce((a, b) => getDist(pacman.x, pacman.y, a.x, a.y) < getDist(pacman.x, pacman.y, b.x, b.y) ? a : b);
-        let distToGhost = getDist(pacman.x, pacman.y, nearestG.x, nearestG.y);
-
-        if (distToGhost < 4 && pacman.state !== 'FLEE') {
+        if (getDist(pacman.x, pacman.y, nearestG.x, nearestG.y) < 4 && pacman.state !== 'FLEE') {
             moves.sort((a, b) => getDist(pacman.x + b.x, pacman.y + b.y, nearestG.x, nearestG.y) - getDist(pacman.x + a.x, pacman.y + a.y, nearestG.x, nearestG.y));
-        } else if (pellets.length > 0) {
+        } else {
             let targetP = pellets.sort((a, b) => getDist(pacman.x, pacman.y, a.x, a.y) - getDist(pacman.x, pacman.y, b.x, b.y))[0];
-            moves.sort((a, b) => getDist(pacman.x + a.x, pacman.y + a.y, targetP.x, targetP.y) - getDist(pacman.x + b.x, pacman.y + b.y, targetP.x, targetP.y));
+            if (targetP) moves.sort((a, b) => getDist(pacman.x + a.x, pacman.y + a.y, targetP.x, targetP.y) - getDist(pacman.x + b.x, pacman.y + b.y, targetP.x, targetP.y));
         }
         if (moves.length > 0) { pacman.dx = moves[0].x; pacman.dy = moves[0].y; }
     }
-    pacman.x += pacman.dx * 0.11; pacman.y += pacman.dy * 0.11;
+    pacman.x += pacman.dx * 0.12; pacman.y += pacman.dy * 0.12;
+    if (pacman.x < 0) pacman.x = MAP_W - 1; if (pacman.x > MAP_W - 1) pacman.x = 0;
 
-    // --- GHOST ARCADE AI ---
-    ghosts.forEach(g => {
-        if (Math.abs(g.x - Math.round(g.x)) < 0.1 && Math.abs(g.y - Math.round(g.y)) < 0.1) {
-            g.x = Math.round(g.x); g.y = Math.round(g.y);
-            let moves = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].filter(m => !isWall(g.x + m.x, g.y + m.y) && (m.x !== -g.dx || m.y !== -g.dy));
-            if (moves.length > 0) {
-                let target = (currentMode === 'SCATTER') ? g.home : {x: pacman.x, y: pacman.y};
-                moves.sort((a, b) => getDist(g.x + a.x, g.y + a.y, target.x, target.y) - getDist(g.x + b.x, g.y + b.y, target.x, target.y));
-                g.dx = moves[0].x; g.dy = moves[0].y;
-            }
-        }
-        g.x += g.dx * 0.08; g.y += g.dy * 0.08;
+    // Ghosts
+    ghosts.forEach(updateGhost);
 
-        if (getDist(pacman.x, pacman.y, g.x, g.y) < 0.5) {
-            if (pacman.state === 'FLEE') { g.x = 9; g.y = 9; } 
-            else { alert("PAC-MAN CAUGHT!"); location.reload(); }
-        }
-    });
-
-    // --- PELLETS ---
+    // Logic/Collisions
     pellets = pellets.filter(p => {
         if (getDist(pacman.x, pacman.y, p.x, p.y) < 0.4) {
             if(p.v === 2) { pacman.state = 'FLEE'; pacman.timer = 300; }
@@ -135,9 +157,16 @@ function gameLoop() {
         if (pacman.timer === 0) pacman.state = 'HUNT';
     }
 
-    // --- DRAWING ---
+    ghosts.forEach(g => {
+        if (getDist(pacman.x, pacman.y, g.x, g.y) < 0.5) {
+            if (pacman.state === 'FLEE') { g.x = 9; g.y = 9; }
+            else { alert("GAME OVER"); location.reload(); }
+        }
+    });
+
+    // Drawing
     ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.strokeStyle = '#1111ff'; ctx.lineWidth = 2;
+    ctx.strokeStyle = '#22f'; ctx.lineWidth = 2;
     layout.forEach((row, y) => row.forEach((v, x) => {
         if(v === 1) ctx.strokeRect(x*TILE+4, y*TILE+4, TILE-8, TILE-8);
     }));
@@ -155,7 +184,7 @@ function gameLoop() {
         ctx.fillRect(g.x*TILE+4, g.y*TILE+4, TILE-8, TILE-8);
     });
 
-    if (pellets.length === 0) { alert("PAC-MAN ATE IT ALL!"); location.reload(); }
+    if (pellets.length === 0) { alert("WINNER!"); location.reload(); }
     requestAnimationFrame(gameLoop);
 }
 gameLoop();
