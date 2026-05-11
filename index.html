@@ -1,29 +1,29 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ghost Commander: Red Edition</title>
+    <title>Ghost Squad: Red Ghost Edition</title>
     <style>
-        body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: monospace; margin: 0; }
-        canvas { border: 3px solid #222; background: #000; margin-top: 20px; }
-        .ui { margin-top: 15px; font-size: 20px; letter-spacing: 2px; }
-        #timer { color: #00ffff; font-weight: bold; }
+        body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: 'Courier New', Courier, monospace; margin: 0; }
+        canvas { border: 4px solid #1919a6; background: #000; margin-top: 20px; box-shadow: 0 0 15px #1919a6; }
+        .ui { margin-top: 15px; font-size: 22px; color: #fff; text-transform: uppercase; }
+        #mode { font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="ui">STATUS: <span id="mode">HUNTING</span> <span id="timer"></span></div>
+    <div class="ui">Status: <span id="mode" style="color: #ff0000;">HUNTING</span> <span id="timer"></span></div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-const TILE = 20;
+const TILE = 24;
 const MAP_W = 19;
 const MAP_H = 21;
 canvas.width = MAP_W * TILE;
 canvas.height = MAP_H * TILE;
 
-// 1=Wall, 0=Pellet, 2=PowerPellet, 3=Empty
+// 1: Wall, 0: Pellet, 2: Power Pellet, 3: Ghost House/Empty
 const layout = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
@@ -49,142 +49,123 @@ const layout = [
 ];
 
 let pellets = [];
-layout.forEach((row, y) => row.forEach((v, x) => { if(v===0 || v===2) pellets.push({x,y,v}); }));
+layout.forEach((row, y) => row.forEach((v, x) => { if(v===0 || v===2) pellets.push({x, y, v}); }));
 
-const SPEED = 2;
-let pac = { x: 9*TILE, y: 15*TILE, dir: {x:-1, y:0}, next: {x:-1, y:0}, state: 'NORMAL', timer: 0 };
-let ghosts = [
-    { x: 9*TILE, y: 1*TILE, color: 'red', dir: {x:0, y:0}, next: {x:0, y:0}, id: 'player' },
-    { x: 1*TILE, y: 1*TILE, color: '#FFB8FF', dir: {x:0, y:0}, next: {x:0, y:0} },
-    { x: 17*TILE, y: 1*TILE, color: '#00FFFF', dir: {x:0, y:0}, next: {x:0, y:0} },
-    { x: 9*TILE, y: 19*TILE, color: '#FFB852', dir: {x:0, y:0}, next: {x:0, y:0} }
+const GHOST_DATA = [
+    { name: 'Blinky', color: '#ff0000', startX: 9, startY: 9, isPlayer: true },
+    { name: 'Pinky', color: '#ffb8ff', startX: 8, startY: 9, isPlayer: false },
+    { name: 'Inky', color: '#00ffff', startX: 9, startY: 8, isPlayer: false },
+    { name: 'Clyde', color: '#ffb852', startX: 10, startY: 9, isPlayer: false }
 ];
 
+let pacman = { x: 9, y: 15, dx: -1, dy: 0, nextDx: -1, nextDy: 0, speed: 0.1, state: 'HUNT', timer: 0 };
+let ghosts = GHOST_DATA.map(g => ({ ...g, x: g.startX, y: g.startY, dx: 0, dy: 0, nextDx: 0, nextDy: 0, respawnTimer: 0 }));
+
 window.addEventListener('keydown', (e) => {
-    const g = ghosts[0];
-    if(e.key === 'ArrowUp')    g.next = {x:0, y:-1};
-    if(e.key === 'ArrowDown')  g.next = {x:0, y:1};
-    if(e.key === 'ArrowLeft')  g.next = {x:-1, y:0};
-    if(e.key === 'ArrowRight') g.next = {x:1, y:0};
+    let g = ghosts[0];
+    if(e.key === 'ArrowUp')    { g.nextDx = 0; g.nextDy = -1; }
+    if(e.key === 'ArrowDown')  { g.nextDx = 0; g.nextDy = 1; }
+    if(e.key === 'ArrowLeft')  { g.nextDx = -1; g.nextDy = 0; }
+    if(e.key === 'ArrowRight') { g.nextDx = 1; g.nextDy = 0; }
 });
 
-function canMove(x, y, dx, dy) {
-    let nx = Math.floor((x + dx * SPEED) / TILE);
-    let ny = Math.floor((y + dy * SPEED) / TILE);
-    // Boundary check for wrapping
-    if (nx < 0 || nx >= MAP_W) return true;
-    return layout[ny] && layout[ny][nx] !== 1;
+function isWall(x, y) {
+    let mapX = Math.round(x);
+    let mapY = Math.round(y);
+    return layout[mapY] && layout[mapY][mapX] === 1;
 }
 
-function updateActor(a, isPac = false) {
-    // Only try to turn when centered in a tile
-    if (a.x % TILE === 0 && a.y % TILE === 0) {
-        if (canMove(a.x, a.y, a.next.x, a.next.y)) {
-            a.dir = a.next;
+function updateMovement(actor, speed) {
+    if (Math.abs(actor.x - Math.round(actor.x)) < 0.1 && Math.abs(actor.y - Math.round(actor.y)) < 0.1) {
+        actor.x = Math.round(actor.x);
+        actor.y = Math.round(actor.y);
+        if (!isWall(actor.x + actor.nextDx, actor.y + actor.nextDy)) {
+            actor.dx = actor.nextDx;
+            actor.dy = actor.nextDy;
         }
-        if (!canMove(a.x, a.y, a.dir.x, a.dir.y)) {
-            a.dir = {x:0, y:0};
+        if (isWall(actor.x + actor.dx, actor.y + actor.dy)) {
+            actor.dx = 0;
+            actor.dy = 0;
         }
     }
-    
-    a.x += a.dir.x * SPEED;
-    a.y += a.dir.y * SPEED;
-
-    // Screen wrapping
-    if(a.x < 0) a.x = (MAP_W-1)*TILE;
-    if(a.x > (MAP_W-1)*TILE) a.x = 0;
+    actor.x += actor.dx * speed;
+    actor.y += actor.dy * speed;
 }
 
 function gameLoop() {
     // --- PAC-MAN AI ---
-    if (pac.x % TILE === 0 && pac.y % TILE === 0) {
-        if (pac.state === 'POWERED') {
-            // Chase closest ghost
-            let target = ghosts.reduce((prev, curr) => 
-                Math.hypot(curr.x-pac.x, curr.y-pac.y) < Math.hypot(prev.x-pac.x, prev.y-pac.y) ? curr : prev);
-            pac.next = { x: Math.sign(target.x - pac.x), y: Math.sign(target.y - pac.y) };
-            if (pac.next.x !== 0 && pac.next.y !== 0) pac.next.y = 0; // Move only 1 axis
-        } else {
-            // Random-ish move toward closest pellet
-            if (pellets.length > 0) {
-                let p = pellets[0];
-                pac.next = { x: Math.sign(p.x*TILE - pac.x), y: Math.sign(p.y*TILE - pac.y) };
-                if (pac.next.x !== 0 && pac.next.y !== 0) pac.next.y = 0;
-            }
-        }
+    if (pacman.state === 'FLEE') {
+        let target = ghosts[0];
+        pacman.nextDx = Math.sign(target.x - pacman.x);
+        pacman.nextDy = Math.sign(target.y - pacman.y);
+        pacman.timer--;
+        if (pacman.timer <= 0) pacman.state = 'HUNT';
+    } else if (pellets.length > 0) {
+        let p = pellets[0];
+        pacman.nextDx = Math.sign(p.x - pacman.x);
+        pacman.nextDy = Math.sign(p.y - pacman.y);
     }
-    updateActor(pac, true);
+    if (Math.abs(pacman.nextDx) === 1 && Math.abs(pacman.nextDy) === 1) pacman.nextDy = 0;
+    updateMovement(pacman, 0.1);
 
     // --- GHOSTS ---
     ghosts.forEach((g, i) => {
-        if (i !== 0 && g.x % TILE === 0 && g.y % TILE === 0) {
-            // Simple random AI for other ghosts
-            let dirs = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
-            g.next = dirs[Math.floor(Math.random()*4)];
+        if (g.respawnTimer > 0) {
+            g.respawnTimer--;
+            if (g.respawnTimer === 0) { g.x = g.startX; g.y = g.startY; }
+            return;
         }
-        updateActor(g);
+        if (i !== 0 && Math.random() < 0.02) {
+            let dirs = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+            let d = dirs[Math.floor(Math.random()*4)];
+            g.nextDx = d.x; g.nextDy = d.y;
+        }
+        updateMovement(g, 0.08);
+
+        // Collisions
+        if (Math.hypot(pacman.x - g.x, pacman.y - g.y) < 0.6) {
+            if (pacman.state === 'FLEE') {
+                if (g.isPlayer) { alert("PAC-MAN ATE YOU! GAME OVER."); location.reload(); }
+                g.respawnTimer = 300; // 5 seconds
+                g.x = -10; g.y = -10; // Hide while waiting
+            } else if (g.isPlayer) {
+                alert("YOU CAUGHT HIM! VICTORY!"); location.reload();
+            }
+        }
     });
 
     // --- LOGIC ---
-    let px = Math.floor(pac.x / TILE);
-    let py = Math.floor(pac.y / TILE);
-    
-    // Eat Pellets
     pellets = pellets.filter(p => {
-        if (p.x === px && p.y === py) {
-            if (p.v === 2) { pac.state = 'POWERED'; pac.timer = 360; }
+        if (Math.hypot(pacman.x - p.x, pacman.y - p.y) < 0.5) {
+            if (p.v === 2) { pacman.state = 'FLEE'; pacman.timer = 360; }
             return false;
         }
         return true;
     });
 
-    if (pac.timer > 0) {
-        pac.timer--;
-        document.getElementById('mode').innerText = "POWERED UP!";
-        document.getElementById('timer').innerText = "(" + Math.ceil(pac.timer/60) + "s)";
-        if (pac.timer === 0) pac.state = 'NORMAL';
-    } else {
-        document.getElementById('mode').innerText = "HUNTING";
-        document.getElementById('timer').innerText = "";
-    }
-
-    // Collisions
-    ghosts.forEach(g => {
-        if (Math.hypot(g.x - pac.x, g.y - pac.y) < TILE*0.8) {
-            if (pac.state === 'POWERED') {
-                alert("Pac-Man ate you! Game Over.");
-                location.reload();
-            } else if (g.id === 'player') {
-                alert("You caught him! Victory!");
-                location.reload();
-            }
-        }
-    });
-
-    // --- DRAW ---
+    // --- DRAWING ---
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     layout.forEach((row, y) => row.forEach((v, x) => {
-        if(v === 1) { ctx.fillStyle = '#1919a6'; ctx.fillRect(x*TILE+2, y*TILE+2, TILE-4, TILE-4); }
+        if (v === 1) { ctx.fillStyle = '#1919a6'; ctx.fillRect(x*TILE+2, y*TILE+2, TILE-4, TILE-4); }
     }));
-
     pellets.forEach(p => {
         ctx.fillStyle = p.v === 2 ? '#ffb8ff' : '#ffb8ae';
         ctx.beginPath(); ctx.arc(p.x*TILE+TILE/2, p.y*TILE+TILE/2, p.v===2?6:2, 0, Math.PI*2); ctx.fill();
     });
-
-    ctx.fillStyle = pac.state === 'POWERED' ? 'white' : 'yellow';
-    ctx.beginPath(); ctx.arc(pac.x+TILE/2, pac.y+TILE/2, TILE/2-2, 0, Math.PI*2); ctx.fill();
-
+    ctx.fillStyle = pacman.state === 'FLEE' ? 'white' : 'yellow';
+    ctx.beginPath(); ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, TILE/2-2, 0, Math.PI*2); ctx.fill();
+    
     ghosts.forEach(g => {
-        ctx.fillStyle = pac.state === 'POWERED' ? '#2121ff' : g.color;
-        ctx.fillRect(g.x+4, g.y+4, TILE-8, TILE-8);
-        ctx.fillStyle = 'white';
-        ctx.fillRect(g.x+6, g.y+6, 3, 3); ctx.fillRect(g.x+11, g.y+6, 3, 3);
+        if (g.respawnTimer > 0) return;
+        ctx.fillStyle = pacman.state === 'FLEE' ? '#2121ff' : g.color;
+        ctx.beginPath(); ctx.arc(g.x*TILE+TILE/2, g.y*TILE+TILE/2-2, TILE/2-4, Math.PI, 0);
+        ctx.lineTo(g.x*TILE+TILE-4, g.y*TILE+TILE-2); ctx.lineTo(g.x*TILE+4, g.y*TILE+TILE-2); ctx.fill();
     });
 
-    if (pellets.length === 0) { alert("Pac-Man ate everything! You Lose."); location.reload(); }
+    document.getElementById('mode').innerText = pacman.state === 'FLEE' ? "RUN!!" : "HUNTING";
+    document.getElementById('mode').style.color = pacman.state === 'FLEE' ? "#00ffff" : "#ff0000";
+
     requestAnimationFrame(gameLoop);
 }
 gameLoop();
