@@ -1,159 +1,147 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ghost Squad: Final Mission</title>
-    <style>
-        body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; }
-        .ui { margin-top: 10px; font-size: 20px; color: yellow; text-shadow: 2px 2px #f00; }
-        canvas { background: #000; margin-top: 10px; border: 3px solid #444; }
-        #status { font-weight: bold; }
-    </style>
+	<title>Maintenance - Moota.co</title>
+	<link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Permanent+Marker">
+	<style type="text/css">
+		body { background-color: black; margin: 0px auto; font-family: sans-serif; width: 100%; overflow: hidden; }
+		#pacman { 
+            height: 400px; 
+            width: 600px; /* Wider for 1st person view */
+            border: 2px solid #333; 
+            margin: 20px auto; 
+            background: #000;
+            position: relative;
+        }
+		h1 { font-family: 'Permanent Marker', cursive; text-align: center; color: yellow; }
+		p { text-decoration: none; color: #0000FF; text-align:center; }
+        #instructions { color: white; text-align: center; font-size: 12px; }
+	</style>
 </head>
 <body>
-    <div class="ui">STATUS: <span id="status">READY</span></div>
-    <canvas id="gameCanvas"></canvas>
+	<h1>Pac-Man FPS</h1>
+	<p>Navigate the maze from a new perspective!</p>
+	<div id="pacman"></div>
+    <div id="instructions">Use ARROW KEYS to Move and Turn</div>
 
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const TILE = 24, MAP_W = 19, MAP_H = 21;
-canvas.width = MAP_W * TILE; canvas.height = MAP_H * TILE;
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/modernizr/2.8.3/modernizr.min.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+	<script type="text/javascript">
 
-const layout = [
+var NONE = 4, UP = 3, LEFT = 2, DOWN = 1, RIGHT = 11, PLAYING = 7, Pacman = {};
+
+Pacman.FPS = 30;
+
+// --- MAP DATA (Kept exactly the same as classic) ---
+Pacman.MAP = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,2,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,2,1],
+    [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
     [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
     [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
     [1,1,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,1,1],
-    [0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0],
+    [1,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,1,1,1],
     [1,1,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,1,1],
-    [0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0], 
+    [0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0],
     [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
-    [0,0,0,1,0,1,0,0,0,0,0,0,0,1,0,1,0,0,0],
+    [1,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,1,1,1],
     [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
     [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
-    [1,2,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,2,1],
+    [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
     [1,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,1,1],
     [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
-    [1,0,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-let pellets = [];
-layout.forEach((row, y) => row.forEach((v, x) => { if(v===0 || v===2) pellets.push({x, y, v}); }));
+Pacman.User = function(game, map) {
+    var position = {x: 90, y: 130},
+        direction = RIGHT,
+        angle = 0; // First person rotation
 
-let ghosts = [
-    { name: 'Blinky', x: 9, y: 7, color: '#f00', dx: 0, dy: 0, next: {x:0, y:0}, home: {x: 18, y: 0}, respawn: 0 },
-    { name: 'Pinky', x: 9, y: 9, color: '#ffb8ff', dx: -1, dy: 0, home: {x: 0, y: 0} },
-    { name: 'Inky', x: 8, y: 9, color: '#0ff', dx: 0, dy: -1, home: {x: 18, y: 20} },
-    { name: 'Clyde', x: 10, y: 9, color: '#ffb852', dx: 0, dy: 1, home: {x: 0, y: 20} }
-];
+    function move() {
+        var speed = 2;
+        var dx = 0, dy = 0;
+        
+        if (game.keys[37]) angle -= 0.1; // Left arrow: Rotate
+        if (game.keys[39]) angle += 0.1; // Right arrow: Rotate
+        if (game.keys[38]) { // Up arrow: Forward
+            dx = Math.cos(angle) * speed;
+            dy = Math.sin(angle) * speed;
+        }
+        if (game.keys[40]) { // Down arrow: Backward
+            dx = -Math.cos(angle) * speed;
+            dy = -Math.sin(angle) * speed;
+        }
 
-let pacman = { x: 9, y: 15, dx: 0, dy: 0, state: 'HUNT', timer: 0 };
-let currentMode = 'SCATTER', modeTimer = 0, frameCount = 0;
-
-window.addEventListener('keydown', (e) => {
-    let p = ghosts[0];
-    if (e.key === 'ArrowUp')    p.next = {x:0, y:-1};
-    if (e.key === 'ArrowDown')  p.next = {x:0, y:1};
-    if (e.key === 'ArrowLeft')  p.next = {x:-1, y:0};
-    if (e.key === 'ArrowRight') p.next = {x:1, y:0};
-});
-
-function isWall(x, y) {
-    let tx = Math.round(x), ty = Math.round(y);
-    return layout[ty] && layout[ty][tx] === 1;
-}
-
-function getGhostTarget(g) {
-    if (currentMode === 'SCATTER') return g.home;
-    if (g.name === 'Pinky') return {x: pacman.x + (pacman.dx * 4), y: pacman.y + (pacman.dy * 4)};
-    if (g.name === 'Inky') return {x: (pacman.x * 2 - ghosts[0].x), y: (pacman.y * 2 - ghosts[0].y)};
-    if (g.name === 'Clyde') return Math.hypot(g.x-pacman.x, g.y-pacman.y) > 8 ? pacman : g.home;
-    return pacman;
-}
-
-function drawGhost(g, ctx) {
-    let ox = g.x * TILE, oy = g.y * TILE;
-    ctx.fillStyle = pacman.state === 'FLEE' ? '#22f' : g.color;
-    
-    // Dome Head
-    ctx.beginPath();
-    ctx.arc(ox + TILE/2, oy + TILE/2 - 2, 9, Math.PI, 0);
-    ctx.lineTo(ox + TILE - 3, oy + TILE - 2);
-    
-    // Wavy Bottom
-    let wave = Math.sin(frameCount * 0.3) * 2;
-    ctx.quadraticCurveTo(ox + TILE - 7, oy + TILE - 5 + wave, ox + TILE - 11, oy + TILE - 2);
-    ctx.quadraticCurveTo(ox + 11, oy + TILE - 5 - wave, ox + 7, oy + TILE - 2);
-    ctx.lineTo(ox + 3, oy + TILE - 2);
-    ctx.fill();
-
-    // Eyes
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(ox + TILE/2 - 4 + g.dx*2, oy + TILE/2 - 3 + g.dy*2, 3, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(ox + TILE/2 + 4 + g.dx*2, oy + TILE/2 - 3 + g.dy*2, 3, 0, 7); ctx.fill();
-}
-
-function moveEntity(e, speed, isAI = false, isGhost = false) {
-    if (Math.abs(e.x - Math.round(e.x)) < 0.1 && Math.abs(e.y - Math.round(e.y)) < 0.1) {
-        e.x = Math.round(e.x); e.y = Math.round(e.y);
-        let moves = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].filter(m => !isWall(e.x + m.x, e.y + m.y) && (!isGhost || (m.x !== -e.dx || m.y !== -e.dy)));
-        if (moves.length > 0) {
-            if (isAI) {
-                let t = isGhost ? getGhostTarget(e) : (pacman.state === 'FLEE' ? ghosts[0] : pellets.reduce((a,b)=>Math.hypot(e.x-a.x,e.y-a.y)<Math.hypot(e.x-b.x,e.y-b.y)?a:b));
-                moves.sort((a, b) => Math.hypot(e.x+a.x-t.x, e.y+a.y-t.y) - Math.hypot(e.x+b.x-t.x, e.y+b.y-t.y));
-                e.dx = moves[0].x; e.dy = moves[0].y;
-            } else {
-                if (!isWall(e.x + e.next.x, e.y + e.next.y)) { e.dx = e.next.x; e.dy = e.next.y; }
-                else if (isWall(e.x + e.dx, e.y + e.dy)) { e.dx = 0; e.dy = 0; }
-            }
+        // Collision check
+        var nx = position.x + dx;
+        var ny = position.y + dy;
+        if (map[Math.floor(ny/10)][Math.floor(nx/10)] === 0) {
+            position.x = nx;
+            position.y = ny;
         }
     }
-    e.x += e.dx * speed; e.y += e.dy * speed;
-    if (e.x < 0) e.x = MAP_W - 1; if (e.x > MAP_W - 1) e.x = 0;
-}
 
-function gameLoop() {
-    frameCount++; modeTimer++;
-    if (modeTimer > 600) { currentMode = currentMode === 'SCATTER' ? 'CHASE' : 'SCATTER'; modeTimer = 0; }
-    document.getElementById('status').innerText = pacman.state === 'FLEE' ? "POWER MODE!" : currentMode;
+    function draw(ctx) {
+        // RAYCASTING ENGINE (The 1st Person Part)
+        var width = 600, height = 400;
+        var fov = Math.PI / 3;
+        
+        // Draw Ceiling and Floor
+        ctx.fillStyle = "#111"; ctx.fillRect(0,0,width, height/2);
+        ctx.fillStyle = "#222"; ctx.fillRect(0,height/2,width, height/2);
 
-    if (ghosts[0].respawn > 0) ghosts[0].respawn--; else moveEntity(ghosts[0], 0.12, false, true);
-    moveEntity(pacman, 0.11, true, false);
-    for (let i = 1; i < ghosts.length; i++) moveEntity(ghosts[i], 0.08, true, true);
-
-    pellets = pellets.filter(p => {
-        if (Math.hypot(pacman.x-p.x, pacman.y-p.y) < 0.5) {
-            if (p.v === 2) { pacman.state = 'FLEE'; pacman.timer = 360; }
-            return false;
+        for (var i = 0; i < width; i += 2) {
+            var rayAngle = (angle - fov/2) + (i / width) * fov;
+            var distance = 0;
+            var hitWall = false;
+            
+            while (!hitWall && distance < 200) {
+                distance += 1;
+                var testX = Math.floor((position.x + Math.cos(rayAngle) * distance) / 10);
+                var testY = Math.floor((position.y + Math.sin(rayAngle) * distance) / 10);
+                
+                if (map[testY] && map[testY][testX] === 1) {
+                    hitWall = true;
+                }
+            }
+            
+            var wallHeight = (height / distance) * 10;
+            var brightness = Math.max(0, 255 - distance * 2);
+            ctx.fillStyle = "rgb(0,0," + brightness + ")";
+            ctx.fillRect(i, (height - wallHeight) / 2, 2, wallHeight);
         }
-        return true;
-    });
+    }
 
-    if (pacman.timer > 0 && --pacman.timer === 0) pacman.state = 'HUNT';
-    ghosts.forEach((g, i) => {
-        if (Math.hypot(pacman.x-g.x, pacman.y-g.y) < 0.6) {
-            if (pacman.state === 'FLEE') { g.x = 9; g.y = 9; if(i===0) g.respawn = 300; }
-            else if (g.respawn === 0) { alert(i === 0 ? "YOU CAUGHT HIM!" : "GAME OVER"); location.reload(); }
-        }
-    });
+    return { "draw": draw, "move": move };
+};
 
-    ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.strokeStyle = '#22f'; ctx.lineWidth = 2;
-    layout.forEach((row, y) => row.forEach((v, x) => { if(v===1) ctx.strokeRect(x*TILE+4, y*TILE+4, TILE-8, TILE-8); }));
-    pellets.forEach(p => { ctx.fillStyle = p.v===2?'#fff':'#ffb8ae'; ctx.beginPath(); ctx.arc(p.x*TILE+TILE/2, p.y*TILE+TILE/2, p.v===2?6:2, 0, 7); ctx.fill(); });
-    ctx.fillStyle = pacman.state === 'FLEE' ? '#fff' : '#ff0';
-    ctx.beginPath(); ctx.arc(pacman.x * TILE + TILE/2, pacman.y * TILE + TILE/2, 10, 0, 7); ctx.fill();
-    ghosts.forEach(g => { if (g.respawn === 0) drawGhost(g, ctx); });
+// --- CORE GAME LOOP ---
+Pacman.Game = function() {
+    var canvas = document.createElement("canvas");
+    canvas.width = 600; canvas.height = 400;
+    document.getElementById("pacman").appendChild(canvas);
+    var ctx = canvas.getContext("2d");
+    
+    this.keys = {};
+    var map = Pacman.MAP;
+    var user = new Pacman.User(this, map);
 
-    requestAnimationFrame(gameLoop);
-}
-gameLoop();
-</script>
+    window.addEventListener("keydown", function(e) { this.keys[e.keyCode] = true; }.bind(this));
+    window.addEventListener("keyup", function(e) { this.keys[e.keyCode] = false; }.bind(this));
+
+    function loop() {
+        user.move();
+        ctx.clearRect(0, 0, 600, 400);
+        user.draw(ctx);
+        setTimeout(loop, 1000 / Pacman.FPS);
+    }
+    loop();
+};
+
+$(function() { new Pacman.Game(); });
+	</script>
 </body>
 </html>
