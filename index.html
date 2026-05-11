@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ghost vs Pac-Man: The Duel</title>
+    <title>Ghost Duel: Fix Pac-Man</title>
     <style>
         body { background: #000; color: white; display: flex; flex-direction: column; align-items: center; font-family: 'Courier New', monospace; margin: 0; overflow: hidden; }
         .ui { margin-top: 20px; font-size: 24px; letter-spacing: 3px; }
@@ -73,20 +73,22 @@ function getDist(x1, y1, x2, y2) { return Math.hypot(x1-x2, y1-y2); }
 function gameLoop() {
     frameCount++;
     
-    // --- PAC-MAN AI ---
+    // --- PAC-MAN AI FIX ---
     if (Math.abs(pacman.x - Math.round(pacman.x)) < 0.1 && Math.abs(pacman.y - Math.round(pacman.y)) < 0.1) {
         pacman.x = Math.round(pacman.x); pacman.y = Math.round(pacman.y);
         let moves = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].filter(m => !isWall(pacman.x + m.x, pacman.y + m.y));
         
-        // TARGETING LOGIC
         let target;
         if (pacman.state === 'FLEE') {
-            target = {x: player.x, y: player.y}; // Power Pellet -> Go for Ghost
-        } else {
-            target = pellets.sort((a,b) => getDist(pacman.x, pacman.y, a.x, a.y) - getDist(pacman.x, pacman.y, b.x, b.y))[0];
+            // Power Up: Target the player ghost directly
+            target = {x: player.x, y: player.y};
+        } else if (pellets.length > 0) {
+            // Hunt: Target nearest pellet
+            let sortedPellets = [...pellets].sort((a,b) => getDist(pacman.x, pacman.y, a.x, a.y) - getDist(pacman.x, pacman.y, b.x, b.y));
+            target = sortedPellets[0];
         }
 
-        if (target) {
+        if (target && moves.length > 0) {
             moves.sort((a, b) => getDist(pacman.x + a.x, pacman.y + a.y, target.x, target.y) - getDist(pacman.x + b.x, pacman.y + b.y, target.x, target.y));
             pacman.dx = moves[0].x; pacman.dy = moves[0].y;
         }
@@ -108,7 +110,7 @@ function gameLoop() {
             if (isWall(player.x + player.dx, player.y + player.dy)) { player.dx = 0; player.dy = 0; }
         }
         player.x += player.dx * 0.12; player.y += player.dy * 0.12;
-        document.getElementById('status').innerText = pacman.state === 'FLEE' ? "RUN!!!" : "HUNT PAC-MAN!";
+        document.getElementById('status').innerText = pacman.state === 'FLEE' ? "PAC-MAN IS CHASING YOU!" : "HUNT PAC-MAN!";
         document.getElementById('status').className = pacman.state === 'FLEE' ? "danger" : "";
     }
 
@@ -117,14 +119,14 @@ function gameLoop() {
         if (pacman.state === 'FLEE') {
             player.respawn = 300; // 5 seconds
             player.x = 9; player.y = 9;
-        } else {
+        } else if (player.respawn === 0) {
             alert("YOU CAUGHT HIM! GHOSTS WIN!"); location.reload();
         }
     }
 
     pellets = pellets.filter(p => {
         if (getDist(pacman.x, pacman.y, p.x, p.y) < 0.4) {
-            if (p.v === 2) { pacman.state = 'FLEE'; pacman.timer = 360; } // 6 seconds
+            if (p.v === 2) { pacman.state = 'FLEE'; pacman.timer = 360; }
             return false;
         }
         return true;
@@ -137,8 +139,6 @@ function gameLoop() {
 
     // --- DRAWING ---
     ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    
-    // Maze
     ctx.strokeStyle = '#2222ff'; ctx.lineWidth = 2;
     layout.forEach((row, y) => row.forEach((v, x) => {
         if(v === 1) ctx.strokeRect(x*TILE+4, y*TILE+4, TILE-8, TILE-8);
@@ -149,15 +149,21 @@ function gameLoop() {
         ctx.beginPath(); ctx.arc(p.x*TILE+TILE/2, p.y*TILE+TILE/2, p.v===2?6:2, 0, 7); ctx.fill();
     });
 
-    // Draw Pac-Man with mouth animation
+    // Draw Pac-Man Animation
     ctx.fillStyle = pacman.state === 'FLEE' ? '#fff' : '#ff0';
-    let angle = pacman.anim * 0.2 * Math.PI;
+    let angle = pacman.anim * 0.25 * Math.PI;
+    let rotate = 0;
+    if (pacman.dx === 1) rotate = 0;
+    if (pacman.dx === -1) rotate = Math.PI;
+    if (pacman.dy === 1) rotate = Math.PI / 2;
+    if (pacman.dy === -1) rotate = -Math.PI / 2;
+
     ctx.beginPath();
     ctx.moveTo(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2);
-    ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, 10, angle, 2*Math.PI - angle);
+    ctx.arc(pacman.x*TILE+TILE/2, pacman.y*TILE+TILE/2, 10, rotate + angle, rotate + 2*Math.PI - angle);
     ctx.fill();
 
-    // Draw Player Ghost with "Wobble" animation
+    // Draw Ghost Animation
     if (player.respawn === 0) {
         ctx.fillStyle = pacman.state === 'FLEE' ? '#2121ff' : player.color;
         let ox = player.x*TILE, oy = player.y*TILE;
@@ -165,15 +171,16 @@ function gameLoop() {
         ctx.beginPath();
         ctx.arc(ox+TILE/2, oy+TILE/2-2, 9, Math.PI, 0);
         ctx.lineTo(ox+TILE-3, oy+TILE-2 + wobble);
+        ctx.lineTo(ox+TILE/2+4, oy+TILE-5 - wobble);
+        ctx.lineTo(ox+TILE/2-4, oy+TILE-5 + wobble);
         ctx.lineTo(ox+3, oy+TILE-2 - wobble);
         ctx.fill();
-        // Eyes
         ctx.fillStyle = '#fff';
         ctx.beginPath(); ctx.arc(ox+TILE/2-4, oy+TILE/2-3, 3, 0, 7); ctx.fill();
         ctx.beginPath(); ctx.arc(ox+TILE/2+4, oy+TILE/2-3, 3, 0, 7); ctx.fill();
     }
 
-    if (pellets.length === 0) { alert("PAC-MAN CLEARED THE MAZE! YOU LOSE."); location.reload(); }
+    if (pellets.length === 0) { alert("GAME OVER - HE ATE EVERYTHING!"); location.reload(); }
     requestAnimationFrame(gameLoop);
 }
 gameLoop();
