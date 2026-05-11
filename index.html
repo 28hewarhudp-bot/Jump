@@ -159,53 +159,59 @@ document.getElementById('score').innerText=player.score;
 });
 
 /* GHOST AI */
-ghosts.forEach(g=>{
+ghosts.forEach(g => {
 
-let target={x:Math.floor(player.x),y:Math.floor(player.y)};
+    let target = { x: player.x, y: player.y };
 
-if(g.id==='Pinky'){
-target.x+=Math.round(Math.cos(player.dir)*4);
-target.y+=Math.round(Math.sin(player.dir)*4);
-}
+    // 🔴 BLINKY (direct chase)
+    if (g.id === 'Blinky') {
+        target = { x: player.x, y: player.y };
+    }
 
-else if(g.id==='Inky'){
-let b=ghosts[0];
-let px=player.x+Math.cos(player.dir)*2;
-let py=player.y+Math.sin(player.dir)*2;
-target.x=Math.floor(px+(px-b.x));
-target.y=Math.floor(py+(py-b.y));
-}
+    // 🩷 PINKY (4 tiles ahead)
+    else if (g.id === 'Pinky') {
+        target.x = player.x + Math.cos(player.dir) * 4;
+        target.y = player.y + Math.sin(player.dir) * 4;
+    }
 
-else if(g.id==='Clyde'){
-if(Math.hypot(g.x-player.x,g.y-player.y)<8){
-target=g.home;
-}
-}
+    // 🩵 INKY (Blinky + player vector ambush)
+    else if (g.id === 'Inky') {
+        let blinky = ghosts[0];
 
-let center=
-Math.abs(g.x-(Math.floor(g.x)+0.5))<0.08 &&
-Math.abs(g.y-(Math.floor(g.y)+0.5))<0.08;
+        let px = player.x + Math.cos(player.dir) * 2;
+        let py = player.y + Math.sin(player.dir) * 2;
 
-if(center){
-g.x=Math.floor(g.x)+0.5;
-g.y=Math.floor(g.y)+0.5;
-chooseDir(g,target);
-}
+        target.x = px + (px - blinky.x);
+        target.y = py + (py - blinky.y);
+    }
 
-let nx=g.x+g.dir.x*g.speed;
-let ny=g.y+g.dir.y*g.speed;
+    // 🟠 CLYDE (runs away when close)
+    else if (g.id === 'Clyde') {
+        let dist = Math.hypot(g.x - player.x, g.y - player.y);
+        if (dist < 8) {
+            target = { x: 1, y: 1 }; // scatter corner
+        } else {
+            target = { x: player.x, y: player.y };
+        }
+    }
 
-if(canMove(Math.floor(nx),Math.floor(ny))){
-g.x=nx;g.y=ny;
-}
+    // 👉 movement (keeps your system stable)
+    let angle = Math.atan2(target.y - g.y, target.x - g.x);
 
-if(Math.hypot(g.x-player.x,g.y-player.y)<0.4){
-location.reload();
-}
+    let nx = g.x + Math.cos(angle) * g.speed;
+    let ny = g.y + Math.sin(angle) * g.speed;
 
+    // only move if not hitting wall
+    if (map[Math.floor(ny)] && map[Math.floor(ny)][Math.floor(nx)] === 0) {
+        g.x = nx;
+        g.y = ny;
+    }
+
+    // collision
+    if (Math.hypot(g.x - player.x, g.y - player.y) < 0.4) {
+        location.reload();
+    }
 });
-
-}
 
 /* DRAW */
 function draw(){
