@@ -1,204 +1,167 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SCP-3008: Pitch Black Night</title>
+    <title>SCP-3008: 3D Infinite IKEA</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
-        #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; z-index: 100; pointer-events: none; }
-        .bar-container { display: flex; gap: 4px; margin: 5px 0; align-items: center; }
-        .slot { width: 18px; height: 18px; border: 2px solid white; }
-        .hunger { background: #ff9800; }
-        .health { background: #f44336; border-radius: 50%; }
-        .empty { background: transparent; border-color: #555; }
-        canvas { display: block; position: absolute; top: 0; left: 0; }
-        #lightCanvas { pointer-events: none; } /* Light layer sits on top */
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 2px 2px black; pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; color: white; transform: translate(-50%, -50%); }
     </style>
 </head>
 <body>
     <div id="ui">
-        <div id="timer-box" style="font-size:24px;"><span id="status">DAY</span>: <span id="countdown">60</span>s</div>
-        <div class="bar-container">HP: <div id="health-bar" style="display:flex; gap:4px;"></div></div>
-        <div class="bar-container">HG: <div id="hunger-bar" style="display:flex; gap:4px;"></div></div>
-        <p><b>F:</b> Grab/Drop | <b>E:</b> Toggle Lamp | <b>Night is PITCH BLACK</b></p>
+        <h1 id="status">DAY</h1>
+        <p>WASD: Move | Click: Lock Mouse | F: Grab Furniture | E: Flashlight</p>
+        <p id="hunger">Hunger: 10/10</p>
     </div>
-    <canvas id="gameCanvas"></canvas>
-    <canvas id="lightCanvas"></canvas>
+    <div id="crosshair">+</div>
 
-<script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const lightCanvas = document.getElementById('lightCanvas');
-const lctx = lightCanvas.getContext('2d');
+    <!-- Load Three.js Engine -->
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com" } }
+    </script>
 
-function resize() { 
-    canvas.width = lightCanvas.width = window.innerWidth; 
-    canvas.height = lightCanvas.height = window.innerHeight; 
-}
-window.onresize = resize; resize();
+<script type="module">
+import * as THREE from 'three';
 
-const CHUNK_SIZE = 800;
-const CYCLE_TIME = 60;
-let worldTime = 0, isDay = true, hunger = 10, health = 5;
-let player = { x: 0, y: 0, size: 15, speed: 5, walkCycle: 0, invuln: 0 };
-let camera = { x: 0, y: 0 };
-let furniture = [], employees = [], foodItems = [], chunksGenerated = new Set();
-let keys = {}, heldItem = null, eatTimer = 0;
+// --- INITIAL SETUP ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
 
-function generateChunk(cx, cy) {
-    const chunkId = `${cx},${cy}`;
-    if (chunksGenerated.has(chunkId)) return;
-    for (let i = 0; i < 15; i++) {
-        let rand = Math.random();
-        let f = { x: cx*CHUNK_SIZE + 50 + Math.random()*(CHUNK_SIZE-100), y: cy*CHUNK_SIZE + 50 + Math.random()*(CHUNK_SIZE-100), angle: Math.random() * Math.PI, type: 'furniture', isLamp: false, lit: false };
-        if (rand < 0.15) { f.w=20; f.h=20; f.color='#FFD700'; f.isLamp=true; }
-        else if (rand < 0.35) { f.w=110; f.h=60; f.color='#303f9f'; f.isBed=true; }
-        else if (rand < 0.5) { f.w=100; f.h=40; f.color='#4e342e'; f.isCouch=true; }
-        else if (rand < 0.7) { f.w=80; f.h=80; f.color='#5d4037'; f.isTable=true; }
-        else { f.w=35; f.h=35; f.color='#795548'; f.isChair=true; }
-        if (!furniture.some(other => Math.hypot(f.x - other.x, f.y - other.y) < 120)) {
-            furniture.push(f);
-            if (Math.random() < 0.4) foodItems.push({ x: f.x + 40, y: f.y + 40, w:16, h:16, type:'food' });
-        }
-    }
-    for (let i = 0; i < 2; i++) employees.push({ x: cx*CHUNK_SIZE+400, y: cy*CHUNK_SIZE+400, vx: 1, vy: 0, walkCycle: 0 });
-    chunksGenerated.add(chunkId);
-}
+// --- LIGHTING ---
+const ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft white light
+scene.add(ambientLight);
 
-function isOverlapping(x, y, size) {
-    for (let f of furniture) {
-        if (f === heldItem) continue;
-        let dx = x - f.x, dy = y - f.y;
-        let cos = Math.cos(-f.angle), sin = Math.sin(-f.angle);
-        let rx = Math.abs(dx * cos - dy * sin), ry = Math.abs(dx * sin + dy * cos);
-        if (rx < f.w/2 + size && ry < f.h/2 + size) return f;
-    }
-    return null;
-}
+const flashLight = new THREE.SpotLight(0xffffff, 100);
+flashLight.angle = Math.PI / 6;
+flashLight.penumbra = 0.3;
+flashLight.position.set(0, 1, 0);
+scene.add(flashLight);
+scene.add(flashLight.target);
 
-function updateBars() {
-    const hBar = document.getElementById('health-bar'), hgBar = document.getElementById('hunger-bar');
-    hBar.innerHTML = hgBar.innerHTML = '';
-    for(let i=0; i<5; i++) hBar.innerHTML += `<div class="slot health ${i >= health ? 'empty' : ''}"></div>`;
-    for(let i=0; i<10; i++) hgBar.innerHTML += `<div class="slot hunger ${i >= hunger ? 'empty' : ''}"></div>`;
+// --- WORLD GLOBALS ---
+let isDay = true;
+let timer = 0;
+let hunger = 10;
+let heldItem = null;
+const furniture = [];
+const employees = [];
+
+// --- FLOOR ---
+const floorGeo = new THREE.PlaneGeometry(2000, 2000);
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// --- SPAWN FURNITURE ---
+function spawnItem(x, z) {
+    const h = 1 + Math.random() * 2;
+    const geo = new THREE.BoxGeometry(2, h, 2);
+    const mat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+    const item = new THREE.Mesh(geo, mat);
+    item.position.set(x, h/2, z);
+    item.castShadow = true;
+    scene.add(item);
+    furniture.push(item);
 }
 
-window.addEventListener('keydown', e => {
-    let k = e.key.toLowerCase();
-    keys[k] = true;
-    if (k === 'f') {
-        if (heldItem) { heldItem = null; } 
-        else {
-            let target = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 80) || foodItems.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 80);
-            if (target && (hunger > 0 || target.type === 'food')) {
-                heldItem = target;
-                if (heldItem.type === 'furniture') { hunger--; updateBars(); }
-            }
-        }
-    }
-    if (k === 'e' && !heldItem) {
-        let lamp = furniture.find(f => f.isLamp && Math.hypot(player.x - f.x, player.y - f.y) < 60);
-        if (lamp) lamp.lit = !lamp.lit;
+for(let i=0; i<100; i++) spawnItem(Math.random()*200 - 100, Math.random()*200 - 100);
+
+// --- EMPLOYEE ---
+const empGeo = new THREE.BoxGeometry(1, 4, 1);
+const empMat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+const employee = new THREE.Mesh(empGeo, empMat);
+employee.position.set(20, 2, 20);
+scene.add(employee);
+
+// --- CONTROLS ---
+let keys = {};
+document.addEventListener('keydown', (e) => keys[e.code] = true);
+document.addEventListener('keyup', (e) => keys[e.code] = false);
+document.addEventListener('click', () => document.body.requestPointerLock());
+
+document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement) {
+        camera.rotation.y -= e.movementX * 0.002;
+        camera.rotation.x -= e.movementY * 0.002;
+        camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
     }
 });
-window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
+// --- INTERACTION ---
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyF') {
+        if (heldItem) {
+            heldItem = null;
+        } else {
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+            const hits = raycaster.intersectObjects(furniture);
+            if (hits.length > 0 && hits[0].distance < 5) {
+                heldItem = hits[0].object;
+                hunger -= 1;
+                document.getElementById('hunger').innerText = `Hunger: ${hunger}/10`;
+            }
+        }
+    }
+    if (e.code === 'KeyE') flashLight.visible = !flashLight.visible;
+});
+
+// --- GAME LOOP ---
 function update() {
-    worldTime += 1/60;
-    isDay = (Math.floor(worldTime / CYCLE_TIME) % 2 === 0);
-    document.getElementById('status').innerText = isDay ? "DAY" : "NIGHT";
-    document.getElementById('countdown').innerText = Math.floor(CYCLE_TIME - (worldTime % CYCLE_TIME));
-    if (player.invuln > 0) player.invuln--;
+    timer += 1/60;
+    if (timer > 60) {
+        isDay = !isDay;
+        timer = 0;
+    }
 
-    let nx = player.x, ny = player.y, moving = false;
-    let speed = keys[' '] ? 7 : 4.5;
-    if (keys['w']) { ny -= speed; moving = true; } if (keys['s']) { ny += speed; moving = true; }
-    if (keys['a']) { nx -= speed; moving = true; } if (keys['d']) { nx += speed; moving = true; }
-    if (moving) player.walkCycle += 0.2;
+    // Day/Night Visuals
+    const status = document.getElementById('status');
+    status.innerText = isDay ? "DAY" : "NIGHT";
+    status.style.color = isDay ? "yellow" : "red";
+    ambientLight.intensity = isDay ? 2 : 0.05;
 
-    if (isOverlapping(player.x, player.y, player.size)) { player.x = nx; player.y = ny; } 
-    else { if (!isOverlapping(nx, player.y, player.size)) player.x = nx; if (!isOverlapping(player.x, ny, player.size)) player.y = ny; }
+    // Movement
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    dir.y = 0; dir.normalize();
+    const side = new THREE.Vector3().crossVectors(camera.up, dir).normalize();
+
+    if (keys['KeyW']) camera.position.addScaledVector(dir, 0.2);
+    if (keys['KeyS']) camera.position.addScaledVector(dir, -0.2);
+    if (keys['KeyA']) camera.position.addScaledVector(side, 0.2);
+    if (keys['KeyD']) camera.position.addScaledVector(side, -0.2);
+    camera.position.y = 1.7; // Head height
+
+    // Flashlight & Held Item
+    flashLight.position.copy(camera.position);
+    const targetPos = new THREE.Vector3();
+    camera.getWorldDirection(targetPos);
+    flashLight.target.position.copy(camera.position).add(targetPos);
 
     if (heldItem) {
-        heldItem.x = player.x; heldItem.y = player.y;
-        if (keys['arrowleft']) heldItem.angle -= 0.05; if (keys['arrowright']) heldItem.angle += 0.05;
-        if (heldItem.type === 'food' && keys['e']) {
-            eatTimer++;
-            if (eatTimer > 45) { hunger = Math.min(10, hunger + 4); foodItems = foodItems.filter(f => f !== heldItem); heldItem = null; updateBars(); }
-        }
-    } else { eatTimer = 0; }
-
-    camera.x = player.x - canvas.width/2; camera.y = player.y - canvas.height/2;
-    let cX = Math.floor(player.x/CHUNK_SIZE), cY = Math.floor(player.y/CHUNK_SIZE);
-    for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) generateChunk(cX+x, cY+y);
-
-    employees.forEach(emp => {
-        let dx = player.x-emp.x, dy = player.y-emp.y, d = Math.hypot(dx, dy);
-        emp.walkCycle += 0.15;
-        if (!isDay) {
-            let mvX = (dx/d)*3.3, mvY = (dy/d)*3.3;
-            if (!isOverlapping(emp.x+mvX, emp.y, 10)) emp.x += mvX;
-            if (!isOverlapping(emp.x, emp.y+mvY, 10)) emp.y += mvY;
-            if (d < 25 && player.invuln <= 0) { health--; player.invuln = 60; updateBars(); if (health <= 0) location.reload(); }
-        } else {
-            if (!isOverlapping(emp.x+emp.vx, emp.y, 10)) emp.x += emp.vx;
-            if (!isOverlapping(emp.x, emp.y+emp.vy, 10)) emp.y += emp.vy;
-            if (Math.random() < 0.01) { emp.vx = Math.random()*2-1; emp.vy = Math.random()*2-1; }
-        }
-    });
-    draw(); requestAnimationFrame(update);
-}
-
-function drawHuman(x, y, color, headColor, cycle, isPlayer) {
-    let limbS = Math.sin(cycle) * 10;
-    if (isPlayer && player.invuln % 10 > 5) ctx.globalAlpha = 0.3;
-    ctx.fillStyle = headColor; ctx.fillRect(x - 6, y - 35, 12, 12); 
-    ctx.fillStyle = color; ctx.fillRect(x - 10, y - 23, 20, 18); 
-    ctx.fillRect(x-14, y-23+limbS, 6, 12); ctx.fillRect(x+8, y-23-limbS, 6, 12); 
-    ctx.fillStyle = "#333"; ctx.fillRect(x-8, y-5+limbS, 7, 10); ctx.fillRect(x+1, y-5-limbS, 7, 10);
-    ctx.globalAlpha = 1.0;
-}
-
-function draw() {
-    ctx.fillStyle = "#777"; ctx.fillRect(0, 0, canvas.width, canvas.height); // Floor
-    ctx.save(); ctx.translate(-camera.x, -camera.y);
-    foodItems.forEach(f => {
-        ctx.fillStyle = "brown"; ctx.beginPath(); ctx.arc(f.x, f.y, 8, 0, Math.PI*2); ctx.fill();
-        if (heldItem === f && eatTimer > 0) { ctx.fillStyle = "white"; ctx.fillRect(f.x-15, f.y-25, 30, 5); ctx.fillStyle = "#4caf50"; ctx.fillRect(f.x-15, f.y-25, (eatTimer/45)*30, 5); }
-    });
-    furniture.forEach(f => {
-        ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.angle);
-        if (f.isLamp) { ctx.fillStyle = "#333"; ctx.fillRect(-5, -5, 10, 40); ctx.fillStyle = f.lit ? "#FFD700" : "#555"; ctx.beginPath(); ctx.arc(0, -10, 15, 0, Math.PI, true); ctx.fill(); } 
-        else { ctx.fillStyle = f.color; ctx.fillRect(-f.w/2, -f.h/2, f.w, f.h); if(f.isBed) { ctx.fillStyle="#eee"; ctx.fillRect(-f.w/2+5, -f.h/2+5, 30, 20); } }
-        ctx.restore();
-    });
-    employees.forEach(e => drawHuman(e.x, e.y, "#ffeb3b", "#ffe0b2", e.walkCycle, false));
-    drawHuman(player.x, player.y, "#2196f3", "#ffccbc", player.walkCycle, true);
-    ctx.restore();
-
-    // --- ENHANCED DARKNESS LOGIC ---
-    lctx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
-    if (!isDay) {
-        lctx.fillStyle = "rgba(0, 0, 10, 0.99)"; // Nearly 100% black
-        lctx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
-        
-        lctx.globalCompositeOperation = 'destination-out';
-        furniture.forEach(f => {
-            if (f.isLamp && f.lit) {
-                let lx = f.x - camera.x;
-                let ly = f.y - camera.y;
-                let grad = lctx.createRadialGradient(lx, ly, 20, lx, ly, 350);
-                grad.addColorStop(0, "rgba(255, 255, 255, 1.0)");
-                grad.addColorStop(1, "rgba(255, 255, 255, 0.0)");
-                lctx.fillStyle = grad;
-                lctx.beginPath();
-                lctx.arc(lx, ly, 350, 0, Math.PI * 2);
-                lctx.fill();
-            }
-        });
-        lctx.globalCompositeOperation = 'source-over';
+        heldItem.position.copy(camera.position).addScaledVector(targetPos, 4);
     }
+
+    // Employee AI
+    if (!isDay) {
+        const empDir = new THREE.Vector3().subVectors(camera.position, employee.position).normalize();
+        employee.position.addScaledVector(empDir, 0.1);
+        if (camera.position.distanceTo(employee.position) < 2) location.reload();
+    }
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(update);
 }
-updateBars(); update();
+
+camera.rotation.order = 'YXZ';
+update();
 </script>
 </body>
 </html>
