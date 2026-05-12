@@ -2,167 +2,143 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>The Maze Runner - Zaura Edition</title>
+    <title>Gigantic Zaura Maze</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: black; color: white; font-family: 'Courier New', monospace; }
-        canvas { display: block; cursor: crosshair; }
-        #overlay { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.8); display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 10;
+        body { margin: 0; overflow: hidden; background-color: #000; color: #f00; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #ui { position: fixed; top: 20px; width: 100%; text-align: center; pointer-events: none; }
+        #status { font-size: 32px; font-weight: bold; text-shadow: 2px 2px #000; }
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: black; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
         }
-        #ui { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; }
-        #status { font-size: 24px; color: red; font-weight: bold; text-transform: uppercase; }
-        h1 { color: white; text-shadow: 0 0 10px red; }
     </style>
 </head>
 <body>
-    <div id="overlay" onclick="startGame()">
-        <h1>CLICK TO ENTER THE MAZE</h1>
-        <p>Use WASD or ARROW KEYS to move</p>
+    <div id="start-screen" onclick="this.style.display='none'; gameActive=true;">
+        <h1 style="font-size: 50px; color: white;">THE INFINITE MAZE</h1>
+        <p style="color: #666;">CLICK TO START | USE <b>WASD</b> TO MOVE</p>
     </div>
+
     <div id="ui"><div id="status"></div></div>
-    <canvas id="game"></canvas>
+    <canvas id="mazeCanvas"></canvas>
 
     <script>
-        const canvas = document.getElementById('game');
+        const canvas = document.getElementById('mazeCanvas');
         const ctx = canvas.getContext('2d');
-        const statusText = document.getElementById('status');
-        const overlay = document.getElementById('overlay');
-        
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const statusEl = document.getElementById('status');
 
-        // --- GAME SETTINGS ---
-        const GRID_SIZE = 51; 
+        let gameActive = false;
+        const GRID_SIZE = 101; // Massive maze size
         const TILE_SIZE = 80;
-        let gameRunning = false;
-        let maze = [];
         
-        const player = { x: 1.5, y: 1.5, speed: 0.12 };
+        let maze = [];
+        const player = { x: 1.5, y: 1.5, speed: 0.18 };
         const monster = { 
             x: GRID_SIZE - 2.5, y: GRID_SIZE - 2.5, 
-            speed: 0.1, state: 'WANDERING', timer: 0, 
-            dir: {x: 0, y: 0} 
+            speed: 0.13, state: 'WANDERING', timer: 0,
+            targetX: 0, targetY: 0
         };
-        
+
         const monsterImg = new Image();
-        monsterImg.src = 'https://ibb.co'; 
+        monsterImg.src = 'https://ibb.co';
 
-        function startGame() {
-            overlay.style.display = 'none';
-            gameRunning = true;
-        }
-
-        // --- GENERATE MAZE ---
-        function initMaze() {
-            for (let y = 0; y < GRID_SIZE; y++) {
-                maze[y] = Array(GRID_SIZE).fill(1);
-            }
-            function carve(x, y) {
+        function generateMaze() {
+            for (let y = 0; y < GRID_SIZE; y++) maze[y] = Array(GRID_SIZE).fill(1);
+            function walk(x, y) {
                 maze[y][x] = 0;
-                const dirs = [[0,-2],[0,2],[-2,0],[2,0]].sort(() => Math.random() - 0.5);
-                for (let [dx, dy] of dirs) {
-                    let nx = x + dx, ny = y + dy;
-                    if (nx > 0 && nx < GRID_SIZE-1 && ny > 0 && ny < GRID_SIZE-1 && maze[ny][nx] === 1) {
-                        maze[y + dy/2][x + dx/2] = 0;
-                        carve(nx, ny);
+                const neighbors = [[x, y - 2], [x, y + 2], [x - 2, y], [x + 2, y]].sort(() => Math.random() - 0.5);
+                for (const [nx, ny] of neighbors) {
+                    if (nx > 0 && nx < GRID_SIZE - 1 && ny > 0 && ny < GRID_SIZE - 1 && maze[ny][nx] === 1) {
+                        maze[ny + (y - ny) / 2][nx + (x - nx) / 2] = 0;
+                        walk(nx, ny);
                     }
                 }
             }
-            carve(1, 1);
-            maze[GRID_SIZE-2][GRID_SIZE-1] = 2; // Exit
+            walk(1, 1);
+            maze[GRID_SIZE - 2][GRID_SIZE - 1] = 2; // Exit
         }
-        initMaze();
+        generateMaze();
 
-        // --- CONTROLS ---
         const keys = {};
-        window.addEventListener('keydown', e => keys[e.code] = true);
-        window.addEventListener('keyup', e => keys[e.code] = false);
+        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-        function isWall(x, y) {
-            const margin = 0.2;
-            const points = [
-                {x: x-margin, y: y-margin}, {x: x+margin, y: y-margin},
-                {x: x-margin, y: y+margin}, {x: x+margin, y: y+margin}
-            ];
-            return points.some(p => maze[Math.floor(p.y)][Math.floor(p.x)] === 1);
+        function isColliding(nx, ny) {
+            const b = 0.25;
+            const pts = [{x:nx-b, y:ny-b}, {x:nx+b, y:ny-b}, {x:nx-b, y:ny+b}, {x:nx+b, y:ny+b}];
+            return pts.some(p => maze[Math.floor(p.y)][Math.floor(p.x)] === 1);
         }
 
-        // --- UPDATE & DRAW ---
-        function loop() {
-            if (gameRunning) {
-                let nextX = player.x, nextY = player.y;
-                if (keys['KeyW'] || keys['ArrowUp']) nextY -= player.speed;
-                if (keys['KeyS'] || keys['ArrowDown']) nextY += player.speed;
-                if (keys['KeyA'] || keys['ArrowLeft']) nextX -= player.speed;
-                if (keys['KeyD'] || keys['ArrowRight']) nextX += player.speed;
+        function update() {
+            if (!gameActive) return;
 
-                if (!isWall(nextX, player.y)) player.x = nextX;
-                if (!isWall(player.x, nextY)) player.y = nextY;
+            // Player Movement (WASD)
+            if (keys['w'] && !isColliding(player.x, player.y - player.speed)) player.y -= player.speed;
+            if (keys['s'] && !isColliding(player.x, player.y + player.speed)) player.y += player.speed;
+            if (keys['a'] && !isColliding(player.x - player.speed, player.y)) player.x -= player.speed;
+            if (keys['d'] && !isColliding(player.x + player.speed, player.y)) player.x += player.speed;
 
-                // AI Logic (as requested)
-                const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
-                const now = Date.now();
+            // Monster AI Logic
+            const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
+            const now = Date.now();
 
-                if (monster.state === 'WANDERING') {
-                    statusText.innerText = "";
-                    if (Math.random() < 0.02) {
-                        const d = [[0,-1],[0,1],[-1,0],[1,0]][Math.floor(Math.random()*4)];
-                        monster.dir = {x: d[0], y: d[1]};
-                    }
-                    let mx = monster.x + monster.dir.x * 0.05;
-                    let my = monster.y + monster.dir.y * 0.05;
-                    if (!isWall(mx, my)) { monster.x = mx; monster.y = my; }
-                    if (dist < 8) { monster.state = 'SPOTTED'; monster.timer = now + 5000; }
-                } 
-                else if (monster.state === 'SPOTTED') {
-                    statusText.innerText = "IT IS WATCHING...";
-                    if (now > monster.timer) { monster.state = 'CHASING'; monster.timer = now + 10000; }
-                } 
-                else if (monster.state === 'CHASING') {
-                    statusText.innerText = "RUN!!";
-                    const angle = Math.atan2(player.y - monster.y, player.x - monster.x);
-                    monster.x += Math.cos(angle) * monster.speed;
-                    monster.y += Math.sin(angle) * monster.speed;
-                    if (now > monster.timer) monster.state = 'WANDERING';
+            if (monster.state === 'WANDERING') {
+                statusEl.innerText = "";
+                if (now > monster.timer) {
+                    const angle = [0, Math.PI/2, Math.PI, 3*Math.PI/2][Math.floor(Math.random()*4)];
+                    monster.targetX = Math.cos(angle); monster.targetY = Math.sin(angle);
+                    monster.timer = now + 1000 + Math.random() * 2000;
                 }
+                let mx = monster.x + monster.targetX * 0.06;
+                let my = monster.y + monster.targetY * 0.06;
+                if (!isColliding(mx, my)) { monster.x = mx; monster.y = my; }
+                else { monster.timer = 0; }
 
-                if (dist < 0.4) { alert("CAUGHT BY ZAURA"); location.reload(); }
-                if (player.x > GRID_SIZE - 1) { alert("YOU ESCAPED!"); location.reload(); }
+                if (dist < 8) { monster.state = 'SPOTTED'; monster.timer = now + 5000; }
+            } 
+            else if (monster.state === 'SPOTTED') {
+                statusEl.innerText = "IT SAW YOU.";
+                if (now > monster.timer) { monster.state = 'CHASING'; monster.timer = now + 10000; }
+            } 
+            else if (monster.state === 'CHASING') {
+                statusEl.innerText = "RUN!!!";
+                const angle = Math.atan2(player.y - monster.y, player.x - monster.x);
+                monster.x += Math.cos(angle) * monster.speed;
+                monster.y += Math.sin(angle) * monster.speed;
+                if (now > monster.timer) monster.state = 'WANDERING';
             }
 
-            // Drawing
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0,0,canvas.width, canvas.height);
+            if (dist < 0.5) { alert("ZAURA CAUGHT YOU"); location.reload(); }
+            if (player.x > GRID_SIZE - 1) { alert("YOU SURVIVED"); location.reload(); }
+        }
+
+        function draw() {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.save();
-            ctx.translate(canvas.width/2 - player.x*TILE_SIZE, canvas.height/2 - player.y*TILE_SIZE);
+            ctx.translate(canvas.width / 2 - player.x * TILE_SIZE, canvas.height / 2 - player.y * TILE_SIZE);
 
             for (let y = 0; y < GRID_SIZE; y++) {
                 for (let x = 0; x < GRID_SIZE; x++) {
-                    if (maze[y][x] === 1) {
-                        ctx.fillStyle = '#0a0a0a';
-                        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                        ctx.strokeStyle = '#222';
-                        ctx.strokeRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    }
+                    if (maze[y][x] === 1) { ctx.fillStyle = '#111'; ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE); }
+                    else if (maze[y][x] === 2) { ctx.fillStyle = '#0f0'; ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE); }
                 }
             }
-            
-            ctx.fillStyle = 'white';
-            ctx.beginPath(); ctx.arc(player.x*TILE_SIZE, player.y*TILE_SIZE, 10, 0, Math.PI*2); ctx.fill();
-            ctx.drawImage(monsterImg, monster.x*TILE_SIZE-TILE_SIZE/2, monster.y*TILE_SIZE-TILE_SIZE/2, TILE_SIZE, TILE_SIZE);
+
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(player.x * TILE_SIZE, player.y * TILE_SIZE, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.drawImage(monsterImg, monster.x * TILE_SIZE - 40, monster.y * TILE_SIZE - 40, 80, 80);
             ctx.restore();
 
-            // Darkness/Flashlight
-            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 20, canvas.width/2, canvas.height/2, 400);
+            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 20, canvas.width/2, canvas.height/2, 500);
             grad.addColorStop(0, 'transparent'); grad.addColorStop(1, 'black');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0,0,canvas.width, canvas.height);
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            requestAnimationFrame(loop);
+            update();
+            requestAnimationFrame(draw);
         }
-        loop();
+        draw();
     </script>
 </body>
 </html>
