@@ -1,17 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Infinite IKEA - No-Stuck Building</title>
+    <title>Infinite IKEA - The Ghost Exit Update</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
         #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; z-index: 100; pointer-events: none; }
+        #timer-box { font-size: 24px; font-weight: bold; }
         canvas { display: block; position: absolute; top: 0; left: 0; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h1 id="status">DAY</h1>
-        <p><b>F:</b> Grab/Carry (Walk through held item) | <b>E:</b> Toggle Lamp</p>
+        <div id="timer-box"><span id="status">DAY</span>: <span id="countdown">60</span>s</div>
+        <p>F: Drag | E: Toggle Lamp | Move through items if stuck!</p>
     </div>
     <canvas id="gameCanvas"></canvas>
     <canvas id="lightCanvas"></canvas>
@@ -31,7 +32,7 @@ resize();
 
 // --- SETTINGS ---
 const CHUNK_SIZE = 800;
-const CYCLE_TIME = 60;
+const CYCLE_TIME = 60; // 1 minute
 let worldTime = 0;
 let isDay = true;
 
@@ -68,10 +69,10 @@ function generateChunk(cx, cy) {
     chunksGenerated.add(chunkId);
 }
 
-// FIXED COLLISION: Ignores the held item so you don't get stuck
-function checkCollision(x, y, size, ignore = null) {
+// COLLISION LOGIC
+function isOverlapping(x, y, size) {
     for (let f of furniture) {
-        if (f === ignore) continue; // This is the fix!
+        if (f === heldItem) continue;
         if (x + size > f.x - f.w/2 && x - size < f.x + f.w/2 && 
             y + size > f.y - f.h/2 && y - size < f.y + f.h/2) return true;
     }
@@ -89,44 +90,51 @@ window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
 function update() {
     worldTime += 1/60;
+    let timeLeft = Math.floor(CYCLE_TIME - (worldTime % CYCLE_TIME));
     isDay = (Math.floor(worldTime / CYCLE_TIME) % 2 === 0);
-    document.getElementById('status').innerText = isDay ? "DAY" : "NIGHT - GET A LAMP";
+    
+    document.getElementById('status').innerText = isDay ? "DAY" : "NIGHT";
     document.getElementById('status').style.color = isDay ? "yellow" : "red";
+    document.getElementById('countdown').innerText = timeLeft;
 
     // Grab Logic
     if (keys['f']) {
         if (!heldItem) heldItem = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 70);
-        if (heldItem) { 
-            heldItem.x = player.x; 
-            heldItem.y = player.y; 
-        }
+        if (heldItem) { heldItem.x = player.x; heldItem.y = player.y; }
     } else heldItem = null;
 
-    // Player Movement (Pass heldItem to collision check)
+    // Movement with "Anti-Stuck" logic
     let nx = player.x, ny = player.y;
     if (keys['w']) ny -= player.speed; if (keys['s']) ny += player.speed;
     if (keys['a']) nx -= player.speed; if (keys['d']) nx += player.speed;
     
-    if (!checkCollision(nx, player.y, player.size, heldItem)) player.x = nx;
-    if (!checkCollision(player.x, ny, player.size, heldItem)) player.y = ny;
+    // If the player is ALREADY inside something, let them move freely to exit.
+    // Only block movement if the NEXT position is a collision and the CURRENT isn't.
+    let currentlyStuck = isOverlapping(player.x, player.y, player.size);
+    
+    if (currentlyStuck) {
+        player.x = nx;
+        player.y = ny;
+    } else {
+        if (!isOverlapping(nx, player.y, player.size)) player.x = nx;
+        if (!isOverlapping(player.x, ny, player.size)) player.y = ny;
+    }
 
     camera.x = player.x - canvas.width/2; camera.y = player.y - canvas.height/2;
 
-    // Infinite Loading
     let cX = Math.floor(player.x/CHUNK_SIZE), cY = Math.floor(player.y/CHUNK_SIZE);
     for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) generateChunk(cX+x, cY+y);
 
-    // Employee AI (They still collide with everything)
     employees.forEach(emp => {
         let dx = player.x - emp.x, dy = player.y - emp.y, d = Math.hypot(dx, dy);
         if (!isDay) {
             let mvX = (dx/d)*3.2, mvY = (dy/d)*3.2;
-            if (!checkCollision(emp.x + mvX, emp.y, 10)) emp.x += mvX;
-            if (!checkCollision(emp.x, emp.y + mvY, 10)) emp.y += mvY;
+            if (!isOverlapping(emp.x + mvX, emp.y, 10)) emp.x += mvX;
+            if (!isOverlapping(emp.x, emp.y + mvY, 10)) emp.y += mvY;
             if (d < 20) location.reload();
         } else {
-            if (!checkCollision(emp.x + emp.vx, emp.y, 10)) emp.x += emp.vx;
-            if (!checkCollision(emp.x, emp.y + emp.vy, 10)) emp.y += emp.vy;
+            if (!isOverlapping(emp.x + emp.vx, emp.y, 10)) emp.x += emp.vx;
+            if (!isOverlapping(emp.x, emp.y + emp.vy, 10)) emp.y += emp.vy;
             if (Math.random() < 0.01) { emp.vx = Math.random()*2-1; emp.vy = Math.random()*2-1; }
         }
     });
