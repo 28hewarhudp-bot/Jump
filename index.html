@@ -1,116 +1,130 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Maze Runner: The Glade</title>
+    <title>The Backrooms: Infinite Maze</title>
     <style>
-        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-        canvas { border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); background: #000; }
-        .ui { margin-bottom: 10px; text-align: center; }
-        .controls { margin-top: 10px; font-size: 0.8em; color: #888; }
+        body { background: #1a1a14; color: #d4d4aa; font-family: 'Courier New', Courier, monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
+        canvas { background: #e2d192; cursor: none; }
+        .vignette { position: fixed; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 150px rgba(0,0,0,0.8); pointer-events: none; }
+        .ui { position: absolute; top: 20px; left: 20px; text-shadow: 2px 2px 2px black; }
+        .hum { display: none; } /* Add a low hum sound if you have one */
     </style>
 </head>
 <body>
     <div class="ui">
-        <h1>THE GLADE RUNNER</h1>
-        <p>Find the <span style="color:#0f0">Green Exit</span>. Don't get stuck.</p>
+        LEVEL 0: "THE LOBBY"<br>
+        COORD: <span id="coords">0, 0</span><br>
+        <small>Run. Don't look back.</small>
     </div>
-    <canvas id="mazeCanvas"></canvas>
-    <div class="controls">Use <b>WASD</b> to move.</div>
+    <div class="vignette"></div>
+    <canvas id="gameCanvas"></canvas>
 
 <script>
-const canvas = document.getElementById('mazeCanvas');
+const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const coordDisplay = document.getElementById('coords');
 
-// 1. GRID CONFIGURATION (Increase these for a "huge" maze)
-const COLS = 51; 
-const ROWS = 41;
-const CELL_SIZE = 15;
-canvas.width = COLS * CELL_SIZE;
-canvas.height = ROWS * CELL_SIZE;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-let maze = [];
-let player = { x: 1, y: 1 };
-const exit = { x: COLS - 2, y: ROWS - 2 };
+const TILE_SIZE = 60;
+const WALL_COLOR = "#bcae76"; // Yellowish Backrooms wall
+const FLOOR_COLOR = "#e2d192"; // Dirty carpet color
+const PLAYER_COLOR = "#222";
 
-// 2. PROCEDURAL MAZE GENERATION (Recursive Backtracker)
-function initMaze() {
-    maze = Array(ROWS).fill().map(() => Array(COLS).fill(1));
-    const stack = [[1, 1]];
-    maze[1][1] = 0;
+let player = { x: 0, y: 0 };
+let keys = {};
 
-    while (stack.length > 0) {
-        const [x, y] = stack[stack.length - 1];
-        const neighbors = [];
-        [[0, -2], [0, 2], [-2, 0], [2, 0]].forEach(([dx, dy]) => {
-            const nx = x + dx, ny = y + dy;
-            if (nx > 0 && nx < COLS - 1 && ny > 0 && ny < ROWS - 1 && maze[ny][nx] === 1) {
-                neighbors.push([nx, ny]);
-            }
-        });
-
-        if (neighbors.length > 0) {
-            const [nx, ny] = neighbors[Math.floor(Math.random() * neighbors.length)];
-            maze[y + (ny - y) / 2][x + (nx - x) / 2] = 0;
-            maze[ny][nx] = 0;
-            stack.push([nx, ny]);
-        } else {
-            stack.pop();
-        }
-    }
-    maze[exit.y][exit.x] = 0; // Ensure exit is clear
+// Use a seedable-style hash to make the world consistent as you move back and forth
+function isWall(x, y) {
+    // This creates a "noise" pattern that looks like a maze
+    // Using prime numbers to create a pseudo-random grid
+    if (x === 0 && y === 0) return false; // Starting point is always clear
+    let val = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+    return (val - Math.floor(val)) > 0.75; // 25% chance of a wall
 }
 
-// 3. RENDERING
 function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    for (let y = 0; y < ROWS; y++) {
-        for (let x = 0; x < COLS; x++) {
-            if (maze[y][x] === 1) {
-                ctx.fillStyle = "#333";
-                ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+    ctx.fillStyle = FLOOR_COLOR;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const offsetX = canvas.width / 2 - player.x;
+    const offsetY = canvas.height / 2 - player.y;
+
+    // Only draw what's visible on screen
+    const startCol = Math.floor((player.x - canvas.width / 2) / TILE_SIZE);
+    const endCol = Math.ceil((player.x + canvas.width / 2) / TILE_SIZE);
+    const startRow = Math.floor((player.y - canvas.height / 2) / TILE_SIZE);
+    const endRow = Math.ceil((player.y + canvas.height / 2) / TILE_SIZE);
+
+    for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+            if (isWall(col, row)) {
+                ctx.fillStyle = WALL_COLOR;
+                ctx.fillRect(col * TILE_SIZE + offsetX, row * TILE_SIZE + offsetY, TILE_SIZE, TILE_SIZE);
+                
+                // Add a small "border" to walls for depth
+                ctx.strokeStyle = "rgba(0,0,0,0.1)";
+                ctx.strokeRect(col * TILE_SIZE + offsetX, row * TILE_SIZE + offsetY, TILE_SIZE, TILE_SIZE);
             }
         }
     }
 
-    // Exit
-    ctx.fillStyle = "#0f0";
-    ctx.fillRect(exit.x * CELL_SIZE, exit.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-
-    // Player
-    ctx.fillStyle = "#fff";
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = "#fff";
+    // Draw Player (Shadowy figure)
+    ctx.fillStyle = PLAYER_COLOR;
     ctx.beginPath();
-    ctx.arc(player.x * CELL_SIZE + CELL_SIZE/2, player.y * CELL_SIZE + CELL_SIZE/2, CELL_SIZE/3, 0, Math.PI*2);
+    ctx.arc(canvas.width / 2, canvas.height / 2, 10, 0, Math.PI * 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
+
+    // Update UI
+    coordDisplay.innerText = `${Math.floor(player.x / TILE_SIZE)}, ${Math.floor(player.y / TILE_SIZE)}`;
+
+    update();
+    requestAnimationFrame(draw);
 }
 
-// 4. MOVEMENT (WASD)
-window.addEventListener('keydown', (e) => {
-    let nx = player.x;
-    let ny = player.y;
+function update() {
+    let speed = 4;
+    let nextX = player.x;
+    let nextY = player.y;
 
-    if (e.key.toLowerCase() === 'w') ny--;
-    if (e.key.toLowerCase() === 's') ny++;
-    if (e.key.toLowerCase() === 'a') nx--;
-    if (e.key.toLowerCase() === 'd') nx++;
+    if (keys['w'] || keys['W']) nextY -= speed;
+    if (keys['s'] || keys['S']) nextY += speed;
+    if (keys['a'] || keys['A']) nextX -= speed;
+    if (keys['d'] || keys['D']) nextX += speed;
 
-    if (maze[ny] && maze[ny][nx] === 0) {
-        player.x = nx;
-        player.y = ny;
+    // Collision detection: Check the 4 corners of the player
+    if (!checkCollision(nextX, nextY)) {
+        player.x = nextX;
+        player.y = nextY;
     }
+}
 
-    if (player.x === exit.x && player.y === exit.y) {
-        alert("You escaped the Maze!");
-        initMaze();
-        player = { x: 1, y: 1 };
+function checkCollision(nx, ny) {
+    const pSize = 8; // Player hit-box size
+    const corners = [
+        {x: nx - pSize, y: ny - pSize},
+        {x: nx + pSize, y: ny - pSize},
+        {x: nx - pSize, y: ny + pSize},
+        {x: nx + pSize, y: ny + pSize}
+    ];
+
+    for (let c of corners) {
+        let col = Math.floor(c.x / TILE_SIZE);
+        let row = Math.floor(c.y / TILE_SIZE);
+        if (isWall(col, row)) return true;
     }
-    draw();
+    return false;
+}
+
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 });
 
-initMaze();
 draw();
 </script>
 </body>
