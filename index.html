@@ -1,118 +1,156 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>THE MAZE: 3D STALKER</title>
+    <meta charset="UTF-8">
+    <title>The Maze Runner - Zaura Edition</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: sans-serif; }
-        #ui { position: absolute; top: 20px; left: 20px; background: white; padding: 15px; border-radius: 8px; z-index: 100; border: 2px solid black; }
-        #msg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: red; display: none; align-items: center; justify-content: center; z-index: 200; font-size: 50px; }
+        body { margin: 0; overflow: hidden; background-color: black; color: white; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; }
+        #status { font-size: 24px; color: red; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <b>WASD:</b> Move | <b>Click:</b> Look<br>
-        <b>STATUS:</b> <span id="status">WANDERING</span>
-    </div>
-    <div id="msg">CAUGHT</div>
+    <div id="ui"><div id="status"></div></div>
+    <canvas id="game"></canvas>
 
-    <!-- The 3D Engine -->
-    <script src="https://cloudflare.com"></script>
     <script>
-        // 1. SETUP
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // Sky Blue
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const statusText = document.getElementById('status');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-        // 2. BRIGHT LIGHTING (Fixes the black screen)
-        const light = new THREE.AmbientLight(0xffffff, 1.2);
-        scene.add(light);
+        // --- GAME CONFIGURATION ---
+        const GRID_SIZE = 61; // Larger size for "Maze Runner" feel (must be odd)
+        const TILE_SIZE = 60;
+        let maze = [];
+        const player = { x: 1, y: 1, speed: 0.15 };
+        const monster = { x: GRID_SIZE-2, y: GRID_SIZE-2, speed: 0.12, state: 'WANDERING', timer: 0 };
+        
+        // Monster Image - Using the Zaura image URL
+        const monsterImg = new Image();
+        monsterImg.src = 'https://i.ibb.co/mS6K3p0/monster.png'; 
 
-        // 3. MAZE (Visible Grey Walls)
-        const wallGeo = new THREE.BoxGeometry(10, 15, 10);
-        const wallMat = new THREE.MeshPhongMaterial({ color: 0x555555 });
-        const mazeSize = 20;
-
-        for (let x = 0; x < mazeSize; x++) {
-            for (let z = 0; z < mazeSize; z++) {
-                if (x === 0 || x === mazeSize - 1 || z === 0 || z === mazeSize - 1 || (x % 3 === 0 && z % 3 === 0)) {
-                    const wall = new THREE.Mesh(wallGeo, wallMat);
-                    wall.position.set(x * 15 - 150, 7.5, z * 15 - 150);
-                    scene.add(wall);
+        // --- MAZE GENERATION ---
+        function initMaze() {
+            for (let y = 0; y < GRID_SIZE; y++) {
+                maze[y] = Array(GRID_SIZE).fill(1);
+            }
+            function carve(x, y) {
+                maze[y][x] = 0;
+                const dirs = [[0,2],[0,-2],[2,0],[-2,0]].sort(() => Math.random() - 0.5);
+                for (let [dx, dy] of dirs) {
+                    if (x+dx > 0 && x+dx < GRID_SIZE-1 && y+dy > 0 && y+dy < GRID_SIZE-1 && maze[y+dy][x+dx] === 1) {
+                        maze[y+dy/2][x+dx/2] = 0;
+                        carve(x+dx, y+dy);
+                    }
                 }
             }
+            carve(1, 1);
+            maze[GRID_SIZE-2][GRID_SIZE-1] = 2; // Exit
         }
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshPhongMaterial({color: 0x000000}));
-        floor.rotation.x = -Math.PI/2;
-        scene.add(floor);
+        initMaze();
 
-        // 4. THE MONSTER (Exact Image)
-        const loader = new THREE.TextureLoader();
-        const monsterTex = loader.load('https://deepai.org');
-        const monsterMat = new THREE.SpriteMaterial({ map: monsterTex });
-        const monster = new THREE.Sprite(monsterMat);
-        monster.scale.set(7, 10, 1);
-        monster.position.set(30, 5, 30);
-        monster.userData = { state: "WANDER", target: new THREE.Vector3(30, 5, 30) };
-        scene.add(monster);
-
-        // 5. PLAYER & CONTROLS
-        let yaw = 0;
-        let playerPos = new THREE.Vector3(0, 5, 0); // Start high so you see everything
+        // --- INPUT HANDLING ---
         const keys = {};
+        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
-        document.body.addEventListener('click', () => renderer.domElement.requestPointerLock());
-        window.addEventListener('keydown', (e) => keys[e.code] = true);
-        window.addEventListener('keyup', (e) => keys[e.code] = false);
-        document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement) yaw -= e.movementX * 0.003;
-        });
-
-        // 6. GAME LOOP
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // Movement relative to where you look
-            if (keys['KeyW'] || keys['KeyS'] || keys['KeyA'] || keys['KeyD']) {
-                const move = new THREE.Vector3();
-                if (keys['KeyW']) move.z -= 0.2;
-                if (keys['KeyS']) move.z += 0.2;
-                if (keys['KeyA']) move.x -= 0.2;
-                if (keys['KeyD']) move.x += 0.2;
-                move.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-                playerPos.add(move);
-            }
-
-            camera.position.copy(playerPos);
-            camera.rotation.y = yaw;
-
-            // MONSTER AI
-            const dist = monster.position.distanceTo(playerPos);
-            if (monster.userData.state === "WANDER") {
-                document.getElementById('status').innerText = "WANDERING";
-                if (monster.position.distanceTo(monster.userData.target) < 4) {
-                    monster.userData.target.set((Math.random()-0.5)*150, 5, (Math.random()-0.5)*150);
-                }
-                const dir = new THREE.Vector3().subVectors(monster.userData.target, monster.position).normalize();
-                monster.position.add(dir.multiplyScalar(0.08));
-
-                if (dist < 30) monster.userData.state = "CHASE";
-            } else {
-                document.getElementById('status').innerText = "CHASING!";
-                const dir = new THREE.Vector3().subVectors(playerPos, monster.position).normalize();
-                monster.position.add(dir.multiplyScalar(0.15));
-
-                if (dist < 2) {
-                    document.getElementById('msg').style.display = 'flex';
-                    setTimeout(() => location.reload(), 2000);
+        function canMove(nx, ny) {
+            const margin = 0.3;
+            for (let ox = -margin; ox <= margin; ox += margin*2) {
+                for (let oy = -margin; oy <= margin; oy += margin*2) {
+                    if (maze[Math.floor(ny+oy)][Math.floor(nx+ox)] === 1) return false;
                 }
             }
-
-            renderer.render(scene, camera);
+            return true;
         }
-        animate();
+
+        // --- GAME LOOP ---
+        function update() {
+            // Player Movement
+            let px = player.x, py = player.y;
+            if (keys['w'] || keys['arrowup']) py -= player.speed;
+            if (keys['s'] || keys['arrowdown']) py += player.speed;
+            if (keys['a'] || keys['arrowleft']) px -= player.speed;
+            if (keys['d'] || keys['arrowright']) px += player.speed;
+            if (canMove(px, player.y)) player.x = px;
+            if (canMove(player.x, py)) player.y = py;
+
+            // Monster AI
+            const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
+            const now = Date.now();
+
+            if (monster.state === 'WANDERING') {
+                statusText.innerText = "";
+                // Random walk logic
+                if (!monster.dir || Math.random() < 0.02) {
+                    monster.dir = [[0,1],[0,-1],[1,0],[-1,0]][Math.floor(Math.random()*4)];
+                }
+                let mx = monster.x + monster.dir[0]*0.05;
+                let my = monster.y + monster.dir[1]*0.05;
+                if (canMove(mx, my)) { monster.x = mx; monster.y = my; }
+                else { monster.dir = null; }
+
+                if (dist < 6) { // If monster sees you
+                    monster.state = 'SPOTTED';
+                    monster.timer = now + 5000;
+                }
+            } 
+            else if (monster.state === 'SPOTTED') {
+                statusText.innerText = "IT SEES YOU...";
+                if (now > monster.timer) {
+                    monster.state = 'CHASING';
+                    monster.timer = now + 10000;
+                }
+            } 
+            else if (monster.state === 'CHASING') {
+                statusText.innerText = "RUN!";
+                const angle = Math.atan2(player.y - monster.y, player.x - monster.x);
+                monster.x += Math.cos(angle) * monster.speed;
+                monster.y += Math.sin(angle) * monster.speed;
+
+                if (now > monster.timer) monster.state = 'WANDERING';
+            }
+
+            if (dist < 0.5) { alert("YOU WERE CAUGHT"); location.reload(); }
+            if (Math.floor(player.x) === GRID_SIZE-1) { alert("YOU ESCAPED!"); location.reload(); }
+        }
+
+        function draw() {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0,0,canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width/2 - player.x*TILE_SIZE, canvas.height/2 - player.y*TILE_SIZE);
+
+            for (let y = 0; y < GRID_SIZE; y++) {
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    if (maze[y][x] === 1) {
+                        ctx.fillStyle = '#111';
+                        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    } else if (maze[y][x] === 2) {
+                        ctx.fillStyle = 'green';
+                        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+
+            ctx.fillStyle = 'cyan';
+            ctx.fillRect(player.x*TILE_SIZE-10, player.y*TILE_SIZE-10, 20, 20);
+            ctx.drawImage(monsterImg, monster.x*TILE_SIZE-30, monster.y*TILE_SIZE-30, 60, 60);
+            ctx.restore();
+
+            // Flashlight effect
+            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 50, canvas.width/2, canvas.height/2, 300);
+            grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.9)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,canvas.width, canvas.height);
+
+            update();
+            requestAnimationFrame(draw);
+        }
+        draw();
     </script>
 </body>
 </html>
