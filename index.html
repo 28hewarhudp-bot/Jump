@@ -5,12 +5,22 @@
     <title>The Maze Runner - Zaura Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: black; color: white; font-family: 'Courier New', monospace; }
-        canvas { display: block; }
+        canvas { display: block; cursor: crosshair; }
+        #overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.8); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10;
+        }
         #ui { position: absolute; top: 10px; width: 100%; text-align: center; pointer-events: none; }
-        #status { font-size: 24px; color: red; font-weight: bold; }
+        #status { font-size: 24px; color: red; font-weight: bold; text-transform: uppercase; }
+        h1 { color: white; text-shadow: 0 0 10px red; }
     </style>
 </head>
 <body>
+    <div id="overlay" onclick="startGame()">
+        <h1>CLICK TO ENTER THE MAZE</h1>
+        <p>Use WASD or ARROW KEYS to move</p>
+    </div>
     <div id="ui"><div id="status"></div></div>
     <canvas id="game"></canvas>
 
@@ -18,32 +28,45 @@
         const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
         const statusText = document.getElementById('status');
+        const overlay = document.getElementById('overlay');
+        
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // --- GAME CONFIGURATION ---
-        const GRID_SIZE = 61; // Larger size for "Maze Runner" feel (must be odd)
-        const TILE_SIZE = 60;
+        // --- GAME SETTINGS ---
+        const GRID_SIZE = 51; 
+        const TILE_SIZE = 80;
+        let gameRunning = false;
         let maze = [];
-        const player = { x: 1, y: 1, speed: 0.15 };
-        const monster = { x: GRID_SIZE-2, y: GRID_SIZE-2, speed: 0.12, state: 'WANDERING', timer: 0 };
         
-        // Monster Image - Using the Zaura image URL
+        const player = { x: 1.5, y: 1.5, speed: 0.12 };
+        const monster = { 
+            x: GRID_SIZE - 2.5, y: GRID_SIZE - 2.5, 
+            speed: 0.1, state: 'WANDERING', timer: 0, 
+            dir: {x: 0, y: 0} 
+        };
+        
         const monsterImg = new Image();
-        monsterImg.src = 'https://i.ibb.co/mS6K3p0/monster.png'; 
+        monsterImg.src = 'https://ibb.co'; 
 
-        // --- MAZE GENERATION ---
+        function startGame() {
+            overlay.style.display = 'none';
+            gameRunning = true;
+        }
+
+        // --- GENERATE MAZE ---
         function initMaze() {
             for (let y = 0; y < GRID_SIZE; y++) {
                 maze[y] = Array(GRID_SIZE).fill(1);
             }
             function carve(x, y) {
                 maze[y][x] = 0;
-                const dirs = [[0,2],[0,-2],[2,0],[-2,0]].sort(() => Math.random() - 0.5);
+                const dirs = [[0,-2],[0,2],[-2,0],[2,0]].sort(() => Math.random() - 0.5);
                 for (let [dx, dy] of dirs) {
-                    if (x+dx > 0 && x+dx < GRID_SIZE-1 && y+dy > 0 && y+dy < GRID_SIZE-1 && maze[y+dy][x+dx] === 1) {
-                        maze[y+dy/2][x+dx/2] = 0;
-                        carve(x+dx, y+dy);
+                    let nx = x + dx, ny = y + dy;
+                    if (nx > 0 && nx < GRID_SIZE-1 && ny > 0 && ny < GRID_SIZE-1 && maze[ny][nx] === 1) {
+                        maze[y + dy/2][x + dx/2] = 0;
+                        carve(nx, ny);
                     }
                 }
             }
@@ -52,73 +75,64 @@
         }
         initMaze();
 
-        // --- INPUT HANDLING ---
+        // --- CONTROLS ---
         const keys = {};
-        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
 
-        function canMove(nx, ny) {
-            const margin = 0.3;
-            for (let ox = -margin; ox <= margin; ox += margin*2) {
-                for (let oy = -margin; oy <= margin; oy += margin*2) {
-                    if (maze[Math.floor(ny+oy)][Math.floor(nx+ox)] === 1) return false;
-                }
-            }
-            return true;
+        function isWall(x, y) {
+            const margin = 0.2;
+            const points = [
+                {x: x-margin, y: y-margin}, {x: x+margin, y: y-margin},
+                {x: x-margin, y: y+margin}, {x: x+margin, y: y+margin}
+            ];
+            return points.some(p => maze[Math.floor(p.y)][Math.floor(p.x)] === 1);
         }
 
-        // --- GAME LOOP ---
-        function update() {
-            // Player Movement
-            let px = player.x, py = player.y;
-            if (keys['w'] || keys['arrowup']) py -= player.speed;
-            if (keys['s'] || keys['arrowdown']) py += player.speed;
-            if (keys['a'] || keys['arrowleft']) px -= player.speed;
-            if (keys['d'] || keys['arrowright']) px += player.speed;
-            if (canMove(px, player.y)) player.x = px;
-            if (canMove(player.x, py)) player.y = py;
+        // --- UPDATE & DRAW ---
+        function loop() {
+            if (gameRunning) {
+                let nextX = player.x, nextY = player.y;
+                if (keys['KeyW'] || keys['ArrowUp']) nextY -= player.speed;
+                if (keys['KeyS'] || keys['ArrowDown']) nextY += player.speed;
+                if (keys['KeyA'] || keys['ArrowLeft']) nextX -= player.speed;
+                if (keys['KeyD'] || keys['ArrowRight']) nextX += player.speed;
 
-            // Monster AI
-            const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
-            const now = Date.now();
+                if (!isWall(nextX, player.y)) player.x = nextX;
+                if (!isWall(player.x, nextY)) player.y = nextY;
 
-            if (monster.state === 'WANDERING') {
-                statusText.innerText = "";
-                // Random walk logic
-                if (!monster.dir || Math.random() < 0.02) {
-                    monster.dir = [[0,1],[0,-1],[1,0],[-1,0]][Math.floor(Math.random()*4)];
+                // AI Logic (as requested)
+                const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
+                const now = Date.now();
+
+                if (monster.state === 'WANDERING') {
+                    statusText.innerText = "";
+                    if (Math.random() < 0.02) {
+                        const d = [[0,-1],[0,1],[-1,0],[1,0]][Math.floor(Math.random()*4)];
+                        monster.dir = {x: d[0], y: d[1]};
+                    }
+                    let mx = monster.x + monster.dir.x * 0.05;
+                    let my = monster.y + monster.dir.y * 0.05;
+                    if (!isWall(mx, my)) { monster.x = mx; monster.y = my; }
+                    if (dist < 8) { monster.state = 'SPOTTED'; monster.timer = now + 5000; }
+                } 
+                else if (monster.state === 'SPOTTED') {
+                    statusText.innerText = "IT IS WATCHING...";
+                    if (now > monster.timer) { monster.state = 'CHASING'; monster.timer = now + 10000; }
+                } 
+                else if (monster.state === 'CHASING') {
+                    statusText.innerText = "RUN!!";
+                    const angle = Math.atan2(player.y - monster.y, player.x - monster.x);
+                    monster.x += Math.cos(angle) * monster.speed;
+                    monster.y += Math.sin(angle) * monster.speed;
+                    if (now > monster.timer) monster.state = 'WANDERING';
                 }
-                let mx = monster.x + monster.dir[0]*0.05;
-                let my = monster.y + monster.dir[1]*0.05;
-                if (canMove(mx, my)) { monster.x = mx; monster.y = my; }
-                else { monster.dir = null; }
 
-                if (dist < 6) { // If monster sees you
-                    monster.state = 'SPOTTED';
-                    monster.timer = now + 5000;
-                }
-            } 
-            else if (monster.state === 'SPOTTED') {
-                statusText.innerText = "IT SEES YOU...";
-                if (now > monster.timer) {
-                    monster.state = 'CHASING';
-                    monster.timer = now + 10000;
-                }
-            } 
-            else if (monster.state === 'CHASING') {
-                statusText.innerText = "RUN!";
-                const angle = Math.atan2(player.y - monster.y, player.x - monster.x);
-                monster.x += Math.cos(angle) * monster.speed;
-                monster.y += Math.sin(angle) * monster.speed;
-
-                if (now > monster.timer) monster.state = 'WANDERING';
+                if (dist < 0.4) { alert("CAUGHT BY ZAURA"); location.reload(); }
+                if (player.x > GRID_SIZE - 1) { alert("YOU ESCAPED!"); location.reload(); }
             }
 
-            if (dist < 0.5) { alert("YOU WERE CAUGHT"); location.reload(); }
-            if (Math.floor(player.x) === GRID_SIZE-1) { alert("YOU ESCAPED!"); location.reload(); }
-        }
-
-        function draw() {
+            // Drawing
             ctx.fillStyle = 'black';
             ctx.fillRect(0,0,canvas.width, canvas.height);
             ctx.save();
@@ -127,30 +141,28 @@
             for (let y = 0; y < GRID_SIZE; y++) {
                 for (let x = 0; x < GRID_SIZE; x++) {
                     if (maze[y][x] === 1) {
-                        ctx.fillStyle = '#111';
+                        ctx.fillStyle = '#0a0a0a';
                         ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    } else if (maze[y][x] === 2) {
-                        ctx.fillStyle = 'green';
-                        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                        ctx.strokeStyle = '#222';
+                        ctx.strokeRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     }
                 }
             }
-
-            ctx.fillStyle = 'cyan';
-            ctx.fillRect(player.x*TILE_SIZE-10, player.y*TILE_SIZE-10, 20, 20);
-            ctx.drawImage(monsterImg, monster.x*TILE_SIZE-30, monster.y*TILE_SIZE-30, 60, 60);
+            
+            ctx.fillStyle = 'white';
+            ctx.beginPath(); ctx.arc(player.x*TILE_SIZE, player.y*TILE_SIZE, 10, 0, Math.PI*2); ctx.fill();
+            ctx.drawImage(monsterImg, monster.x*TILE_SIZE-TILE_SIZE/2, monster.y*TILE_SIZE-TILE_SIZE/2, TILE_SIZE, TILE_SIZE);
             ctx.restore();
 
-            // Flashlight effect
-            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 50, canvas.width/2, canvas.height/2, 300);
-            grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.9)');
+            // Darkness/Flashlight
+            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 20, canvas.width/2, canvas.height/2, 400);
+            grad.addColorStop(0, 'transparent'); grad.addColorStop(1, 'black');
             ctx.fillStyle = grad;
             ctx.fillRect(0,0,canvas.width, canvas.height);
 
-            update();
-            requestAnimationFrame(draw);
+            requestAnimationFrame(loop);
         }
-        draw();
+        loop();
     </script>
 </body>
 </html>
