@@ -1,19 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Escape the Infinite IKEA</title>
+    <title>Infinite IKEA - Survival</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
-        canvas { display: block; background: #e0e0e0; }
-        #ui { position: absolute; top: 10; left: 10; color: white; text-shadow: 1px 1px black; pointer-events: none; }
+        body { margin: 0; overflow: hidden; background: #222; font-family: 'Courier New', Courier, monospace; }
+        #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
+        canvas { display: block; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h2>SCP-3008 Lite</h2>
-        <p>WASD to Move | F to pick up furniture</p>
-        <p id="timer">Time: 0s</p>
-        <p id="status" style="font-weight:bold; color: yellow;">DAY TIME</p>
+        <h1 id="status" style="color: #ffff00;">DAY: 2:00</h1>
+        <p>WASD to Move | Hold F to Grab | Snap to Grid Active</p>
     </div>
     <canvas id="gameCanvas"></canvas>
 
@@ -23,57 +21,106 @@ const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// Game State
-let player = { x: canvas.width/2, y: canvas.height/2, size: 20, color: 'blue', speed: 4 };
-let furniture = [{ x: 300, y: 300, w: 60, h: 40, held: false }];
-let food = [{ x: 500, y: 200, size: 10, eaten: false }];
-let employee = { x: 100, y: 100, size: 25, speed: 2 };
-let keys = {};
-let gameTime = 0;
+// --- GAME SETTINGS ---
+const GRID_SIZE = 40;
+const CHUNK_SIZE = 800; // Large area of furniture
+const DAY_TIME = 120;   // 2 Minutes
+let worldTime = 0;
 let isDay = true;
 
-// Input Handling
+// --- GAME OBJECTS ---
+let player = { x: 0, y: 0, size: 20, speed: 5 };
+let camera = { x: 0, y: 0 };
+let furniture = [];
+let employees = [];
+let chunksGenerated = new Set();
+let keys = {};
+let heldItem = null;
+
+// --- GENERATION ---
+function generateChunk(cx, cy) {
+    const chunkId = `${cx},${cy}`;
+    if (chunksGenerated.has(chunkId)) return;
+    
+    // Spawn 15-25 pieces of random furniture per chunk
+    for (let i = 0; i < 20; i++) {
+        let types = [
+            {w: 80, h: 40, c: '#5d4037', n: 'Table'},
+            {w: 30, h: 30, c: '#795548', n: 'Chair'},
+            {w: 120, h: 60, c: '#3e2723', n: 'Shelf'},
+            {w: 20, h: 20, c: '#ffeb3b', n: 'Lamp'}
+        ];
+        let t = types[Math.floor(Math.random() * types.length)];
+        furniture.push({
+            x: cx * CHUNK_SIZE + Math.random() * CHUNK_SIZE,
+            y: cy * CHUNK_SIZE + Math.random() * CHUNK_SIZE,
+            w: t.w, h: t.h, color: t.c, name: t.n
+        });
+    }
+    chunksGenerated.add(chunkId);
+}
+
+// --- INPUTS ---
 window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
 function update() {
-    // 1. Timer Logic (2 mins = 120 seconds)
-    gameTime += 1/60; 
-    let cycleTime = Math.floor(gameTime) % 240; 
-    isDay = cycleTime < 120; // First 120s is Day, next 120s is Night
+    // 1. Time & Day/Night Logic
+    worldTime += 1/60;
+    let timeLeft = Math.max(0, 120 - (Math.floor(worldTime) % 120));
+    isDay = (Math.floor(worldTime / 120) % 2 === 0);
+    
+    document.getElementById('status').innerText = `${isDay ? "DAY" : "NIGHT"}: ${Math.floor(timeLeft/60)}:${(timeLeft%60).toString().padStart(2, '0')}`;
+    document.getElementById('status').style.color = isDay ? "#ffff00" : "#ff4444";
 
-    document.getElementById('timer').innerText = `Time: ${Math.floor(gameTime)}s`;
-    document.getElementById('status').innerText = isDay ? "DAY TIME (Safe)" : "NIGHT TIME (Run!)";
-    document.getElementById('status').style.color = isDay ? "yellow" : "red";
-
-    // 2. Player Movement (WASD)
+    // 2. Player Movement
     if (keys['w']) player.y -= player.speed;
     if (keys['s']) player.y += player.speed;
     if (keys['a']) player.x -= player.speed;
     if (keys['d']) player.x += player.speed;
 
-    // 3. Pick up Furniture (F)
-    furniture.forEach(f => {
-        let dist = Math.hypot(player.x - f.x, player.y - f.y);
-        if (keys['f'] && dist < 50) {
-            f.x = player.x;
-            f.y = player.y;
-        }
-    });
+    // Camera follow
+    camera.x = player.x - canvas.width / 2;
+    camera.y = player.y - canvas.height / 2;
 
-    // 4. Employee AI
+    // 3. Infinite World Loading
+    let currentChunkX = Math.floor(player.x / CHUNK_SIZE);
+    let currentChunkY = Math.floor(player.y / CHUNK_SIZE);
+    for(let x = -1; x <= 1; x++) {
+        for(let y = -1; y <= 1; y++) {
+            generateChunk(currentChunkX + x, currentChunkY + y);
+        }
+    }
+
+    // 4. Picking up Furniture (F)
+    if (keys['f']) {
+        if (!heldItem) {
+            heldItem = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 80);
+        }
+        if (heldItem) {
+            // Drag and Snap to Grid
+            heldItem.x = Math.round(player.x / 10) * 10;
+            heldItem.y = Math.round(player.y / 10) * 10;
+        }
+    } else {
+        heldItem = null;
+    }
+
+    // 5. Employee AI (Spawn at night, chase player)
     if (!isDay) {
-        let dx = player.x - employee.x;
-        let dy = player.y - employee.y;
-        let angle = Math.atan2(dy, dx);
-        employee.x += Math.cos(angle) * employee.speed;
-        employee.y += Math.sin(angle) * employee.speed;
-
-        // Collision Check
-        if (Math.hypot(player.x - employee.x, player.y - employee.y) < 20) {
-            alert("The store is closed. Game Over!");
-            location.reload();
+        if (employees.length < 3) {
+            employees.push({ x: player.x + 400, y: player.y + 400, speed: 3.5 });
         }
+        employees.forEach(emp => {
+            let dx = player.x - emp.x;
+            let dy = player.y - emp.y;
+            let dist = Math.hypot(dx, dy);
+            emp.x += (dx / dist) * emp.speed;
+            emp.y += (dy / dist) * emp.speed;
+            if (dist < 20) location.reload(); // Caught!
+        });
+    } else {
+        employees = []; // Reset employees in day
     }
 
     draw();
@@ -82,34 +129,48 @@ function update() {
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Set Night Overlay
-    ctx.fillStyle = isDay ? "#e0e0e0" : "#222244";
-    ctx.fillRect(0,0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-camera.x, -camera.y);
 
-    // Draw Furniture (Brown Boxes)
-    ctx.fillStyle = "#8B4513";
-    furniture.forEach(f => ctx.fillRect(f.x - f.w/2, f.y - f.h/2, f.w, f.h));
-
-    // Draw Food (Red Circles)
-    ctx.fillStyle = "red";
-    food.forEach(f => {
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.size, 0, Math.PI*2);
-        ctx.fill();
-    });
-
-    // Draw Employee (Yellow Shirt)
-    if (!isDay) {
-        ctx.fillStyle = "yellow";
-        ctx.fillRect(employee.x - 12, employee.y - 12, 25, 25);
+    // Floor Grid
+    ctx.strokeStyle = isDay ? "#ccc" : "#111";
+    ctx.lineWidth = 1;
+    let startX = Math.floor(camera.x / GRID_SIZE) * GRID_SIZE;
+    let startY = Math.floor(camera.y / GRID_SIZE) * GRID_SIZE;
+    for(let x = startX; x < startX + canvas.width + GRID_SIZE; x += GRID_SIZE) {
+        ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + canvas.height); ctx.stroke();
+    }
+    for(let y = startY; y < startY + canvas.height + GRID_SIZE; y += GRID_SIZE) {
+        ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + canvas.width, y); ctx.stroke();
     }
 
-    // Draw Player
-    ctx.fillStyle = player.color;
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, player.size, 0, Math.PI*2);
-    ctx.fill();
+    // Furniture
+    furniture.forEach(f => {
+        ctx.fillStyle = f.color;
+        ctx.fillRect(f.x - f.w/2, f.y - f.h/2, f.w, f.h);
+        ctx.strokeStyle = "black";
+        ctx.strokeRect(f.x - f.w/2, f.y - f.h/2, f.w, f.h);
+    });
+
+    // Employee
+    employees.forEach(emp => {
+        ctx.fillStyle = "#ffeb3b"; // Yellow shirt
+        ctx.fillRect(emp.x - 15, emp.y - 15, 30, 30);
+        ctx.fillStyle = "#eee"; // Pale skin
+        ctx.fillRect(emp.x - 10, emp.y - 40, 20, 25);
+    });
+
+    // Player
+    ctx.fillStyle = "#2196f3";
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, Math.PI*2); ctx.fill();
+
+    ctx.restore();
+
+    // Darkness overlay at night
+    if (!isDay) {
+        ctx.fillStyle = "rgba(0, 0, 40, 0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 }
 
 update();
