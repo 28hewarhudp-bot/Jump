@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Massive Zaura Maze</title>
+    <title>Thin Wall Maze - Zaura</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: #f00; font-family: 'Courier New', monospace; }
+        body { margin: 0; overflow: hidden; background-color: #050505; color: #f00; font-family: 'Courier New', monospace; }
         canvas { display: block; }
-        #ui { position: fixed; top: 20px; width: 100%; text-align: center; pointer-events: none; }
-        #status { font-size: 32px; font-weight: bold; text-shadow: 2px 2px #000; }
+        #ui { position: fixed; top: 20px; width: 100%; text-align: center; pointer-events: none; z-index: 10; }
+        #status { font-size: 28px; font-weight: bold; text-shadow: 2px 2px #000; letter-spacing: 2px; }
         #start-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: black; display: flex; flex-direction: column;
@@ -16,136 +16,127 @@
     </style>
 </head>
 <body>
-    <div id="start-screen" onclick="start()">
-        <h1 style="font-size: 50px; color: white;">THE GIANT MAZE</h1>
-        <p style="color: #888;">CLICK TO START</p>
-        <p style="color: #444;">USE WASD TO MOVE</p>
+    <div id="start-screen" onclick="this.style.display='none'; gameActive=true; window.focus();">
+        <h1 style="font-size: 40px; color: white;">THE THIN MAZE</h1>
+        <p style="color: #888;">CLICK TO START | WASD TO MOVE</p>
     </div>
 
     <div id="ui"><div id="status"></div></div>
-    <canvas id="mazeCanvas"></canvas>
+    <canvas id="game"></canvas>
 
     <script>
-        const canvas = document.getElementById('mazeCanvas');
+        const canvas = document.getElementById('game');
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
         let gameActive = false;
 
         // Settings
-        const GRID_SIZE = 101; // Massive "Maze Runner" style size
-        const TILE_SIZE = 90;
-        let maze = [];
+        const GRID_SIZE = 50; // 50x50 cells (huge with skinny walls)
+        const TILE_SIZE = 100;
+        let cells = [];
         
-        const player = { x: 1, y: 1, speed: 0.2 };
+        const player = { x: 0.5, y: 0.5, speed: 0.15 };
         const monster = { 
-            x: GRID_SIZE - 2, y: GRID_SIZE - 2, 
-            speed: 0.14, state: 'WANDERING', timer: 0,
+            x: GRID_SIZE - 0.5, y: GRID_SIZE - 0.5, 
+            speed: 0.12, state: 'WANDERING', timer: 0,
             targetX: 0, targetY: 0
         };
 
         const monsterImg = new Image();
         monsterImg.src = 'https://ibb.co';
 
-        function start() {
-            document.getElementById('start-screen').style.display = 'none';
-            gameActive = true;
-            window.focus(); // Force browser to listen to keyboard
-        }
-
-        function generateMaze() {
-            for (let y = 0; y < GRID_SIZE; y++) maze[y] = Array(GRID_SIZE).fill(1);
-            function walk(x, y) {
-                maze[y][x] = 0;
-                const neighbors = [[x, y - 2], [x, y + 2], [x - 2, y], [x + 2, y]].sort(() => Math.random() - 0.5);
-                for (const [nx, ny] of neighbors) {
-                    if (nx > 0 && nx < GRID_SIZE - 1 && ny > 0 && ny < GRID_SIZE - 1 && maze[ny][nx] === 1) {
-                        maze[ny + (y - ny) / 2][nx + (x - nx) / 2] = 0;
-                        walk(nx, ny);
-                    }
+        // Generate Maze (Recursive Backtracker)
+        function initMaze() {
+            for (let y = 0; y < GRID_SIZE; y++) {
+                cells[y] = [];
+                for (let x = 0; x < GRID_SIZE; x++) {
+                    cells[y][x] = { x, y, visited: false, walls: [true, true, true, true] }; // Top, Right, Bottom, Left
                 }
             }
-            walk(1, 1);
-            maze[GRID_SIZE - 2][GRID_SIZE - 1] = 0; // Ensure exit path is clear
-            
-            // --- SPAWN PROTECTION ---
-            // Finds the first available open floor near the start so you don't get stuck in a wall
-            let foundSpawn = false;
-            for(let y = 1; y < 10; y++) {
-                for(let x = 1; x < 10; x++) {
-                    if(maze[y][x] === 0) {
-                        player.x = x + 0.5;
-                        player.y = y + 0.5;
-                        foundSpawn = true;
-                        break;
+
+            let stack = [];
+            let current = cells[0][0];
+            current.visited = true;
+
+            function getNeighbors(c) {
+                let n = [];
+                if (c.y > 0 && !cells[c.y-1][c.x].visited) n.push(cells[c.y-1][c.x]);
+                if (c.x < GRID_SIZE-1 && !cells[c.y][c.x+1].visited) n.push(cells[c.y][c.x+1]);
+                if (c.y < GRID_SIZE-1 && !cells[c.y+1][c.x].visited) n.push(cells[c.y+1][c.x]);
+                if (c.x > 0 && !cells[c.y][c.x-1].visited) n.push(cells[c.y][c.x-1]);
+                return n;
+            }
+
+            while (true) {
+                let nexts = getNeighbors(current);
+                if (nexts.length > 0) {
+                    let next = nexts[Math.floor(Math.random() * nexts.length)];
+                    next.visited = true;
+                    stack.push(current);
+                    // Remove walls between current and next
+                    if (current.x === next.x) {
+                        if (current.y > next.y) { current.walls[0] = false; next.walls[2] = false; }
+                        else { current.walls[2] = false; next.walls[0] = false; }
+                    } else {
+                        if (current.x > next.x) { current.walls[3] = false; next.walls[1] = false; }
+                        else { current.walls[1] = false; next.walls[3] = false; }
                     }
-                }
-                if(foundSpawn) break;
+                    current = next;
+                } else if (stack.length > 0) {
+                    current = stack.pop();
+                } else break;
             }
         }
-        generateMaze();
+        initMaze();
 
-        // Keyboard Controls
         const keys = {};
-        window.addEventListener('keydown', e => { 
-            keys[e.key.toLowerCase()] = true; 
-            if(["w","a","s","d"].includes(e.key.toLowerCase())) e.preventDefault(); // Stop page scrolling
-        });
+        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-        function isColliding(nx, ny) {
-            const b = 0.2; // Hitbox size
-            const checkPoints = [
-                {x: nx-b, y: ny-b}, {x: nx+b, y: ny-b},
-                {x: nx-b, y: ny+b}, {x: nx+b, y: ny+b}
-            ];
-            return checkPoints.some(p => {
-                const mx = Math.floor(p.x);
-                const my = Math.floor(p.y);
-                return (mx < 0 || mx >= GRID_SIZE || my < 0 || my >= GRID_SIZE || maze[my][mx] === 1);
-            });
+        function checkCollision(px, py, nx, ny) {
+            let cx = Math.floor(px), cy = Math.floor(py);
+            let ncx = Math.floor(nx), ncy = Math.floor(ny);
+            if (ncx < 0 || ncx >= GRID_SIZE || ncy < 0 || ncy >= GRID_SIZE) return true;
+            
+            // Check walls of current cell when moving to next
+            if (ncx > cx && cells[cy][cx].walls[1]) return true; // Right
+            if (ncx < cx && cells[cy][cx].walls[3]) return true; // Left
+            if (ncy > cy && cells[cy][cx].walls[2]) return true; // Bottom
+            if (ncy < cy && cells[cy][cx].walls[0]) return true; // Top
+            return false;
         }
 
         function update() {
             if (!gameActive) return;
 
-            // Movement Logic
-            let dx = 0, dy = 0;
-            if (keys['w']) dy -= player.speed;
-            if (keys['s']) dy += player.speed;
-            if (keys['a']) dx -= player.speed;
-            if (keys['d']) dx += player.speed;
+            let nx = player.x, ny = player.y;
+            if (keys['w']) ny -= player.speed;
+            if (keys['s']) ny += player.speed;
+            if (keys['a']) nx -= player.speed;
+            if (keys['d']) nx += player.speed;
 
-            if (!isColliding(player.x + dx, player.y)) player.x += dx;
-            if (!isColliding(player.x, player.y + dy)) player.y += dy;
+            if (!checkCollision(player.x, player.y, nx, player.y)) player.x = nx;
+            if (!checkCollision(player.x, player.y, player.x, ny)) player.y = ny;
 
-            // AI Logic
+            // Monster AI
             const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
             const now = Date.now();
 
             if (monster.state === 'WANDERING') {
                 statusEl.innerText = "";
                 if (now > monster.timer) {
-                    const angle = Math.random() * Math.PI * 2;
-                    monster.targetX = Math.cos(angle) * 0.07;
-                    monster.targetY = Math.sin(angle) * 0.07;
-                    monster.timer = now + 2000;
+                    monster.targetX = (Math.random() - 0.5) * 0.15;
+                    monster.targetY = (Math.random() - 0.5) * 0.15;
+                    monster.timer = now + 1500;
                 }
-                if (!isColliding(monster.x + monster.targetX, monster.y + monster.targetY)) {
-                    monster.x += monster.targetX;
-                    monster.y += monster.targetY;
-                } else { monster.timer = 0; }
-
-                if (dist < 8) { 
-                    monster.state = 'SPOTTED'; 
-                    monster.timer = now + 5000; // Freeze for 5 seconds
+                if (!checkCollision(monster.x, monster.y, monster.x + monster.targetX, monster.y + monster.targetY)) {
+                    monster.x += monster.targetX; monster.y += monster.targetY;
                 }
+                if (dist < 6) { monster.state = 'SPOTTED'; monster.timer = now + 5000; }
             } 
             else if (monster.state === 'SPOTTED') {
-                statusEl.innerText = "IT'S STARING AT YOU...";
-                if (now > monster.timer) { 
-                    monster.state = 'CHASING'; 
-                    monster.timer = now + 10000; // Chase for 10 seconds
-                }
+                statusEl.innerText = "ZAURA IS WATCHING...";
+                if (now > monster.timer) { monster.state = 'CHASING'; monster.timer = now + 10000; }
             } 
             else if (monster.state === 'CHASING') {
                 statusEl.innerText = "RUN!!!";
@@ -155,39 +146,47 @@
                 if (now > monster.timer) monster.state = 'WANDERING';
             }
 
-            if (dist < 0.6) { alert("ZAURA GOT YOU"); location.reload(); }
-            if (player.x > GRID_SIZE - 1.5) { alert("YOU ESCAPED THE MAZE!"); location.reload(); }
+            if (dist < 0.4) { alert("CAUGHT"); location.reload(); }
+            if (player.x > GRID_SIZE - 0.5 && player.y > GRID_SIZE - 1) { alert("ESCAPED!"); location.reload(); }
         }
 
         function draw() {
-            canvas.width = window.innerWidth; 
-            canvas.height = window.innerHeight;
-            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             ctx.save();
-            ctx.translate(canvas.width / 2 - player.x * TILE_SIZE, canvas.height / 2 - player.y * TILE_SIZE);
+            ctx.translate(canvas.width/2 - player.x*TILE_SIZE, canvas.height/2 - player.y*TILE_SIZE);
 
-            // Draw Walls
-            ctx.fillStyle = '#111';
+            // Draw Skinny Walls
+            ctx.strokeStyle = '#333'; ctx.lineWidth = 4;
             for (let y = 0; y < GRID_SIZE; y++) {
                 for (let x = 0; x < GRID_SIZE; x++) {
-                    if (maze[y][x] === 1) {
-                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE + 1, TILE_SIZE + 1);
-                    }
+                    let c = cells[y][x];
+                    if (c.walls[0]) { ctx.beginPath(); ctx.moveTo(x*TILE_SIZE, y*TILE_SIZE); ctx.lineTo((x+1)*TILE_SIZE, y*TILE_SIZE); ctx.stroke(); }
+                    if (c.walls[1]) { ctx.beginPath(); ctx.moveTo((x+1)*TILE_SIZE, y*TILE_SIZE); ctx.lineTo((x+1)*TILE_SIZE, (y+1)*TILE_SIZE); ctx.stroke(); }
+                    if (c.walls[2]) { ctx.beginPath(); ctx.moveTo(x*TILE_SIZE, (y+1)*TILE_SIZE); ctx.lineTo((x+1)*TILE_SIZE, (y+1)*TILE_SIZE); ctx.stroke(); }
+                    if (c.walls[3]) { ctx.beginPath(); ctx.moveTo(x*TILE_SIZE, y*TILE_SIZE); ctx.lineTo(x*TILE_SIZE, (y+1)*TILE_SIZE); ctx.stroke(); }
                 }
             }
 
-            // Draw Entities
-            ctx.fillStyle = '#fff'; // Player
-            ctx.beginPath(); ctx.arc(player.x * TILE_SIZE, player.y * TILE_SIZE, 12, 0, Math.PI * 2); ctx.fill();
-            
-            ctx.drawImage(monsterImg, monster.x * TILE_SIZE - 45, monster.y * TILE_SIZE - 45, 90, 90);
+            // Exit
+            ctx.fillStyle = '#0f0'; ctx.fillRect((GRID_SIZE-1)*TILE_SIZE + 20, (GRID_SIZE-1)*TILE_SIZE + 20, 60, 60);
+
+            // Entities
+            ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(player.x*TILE_SIZE, player.y*TILE_SIZE, 10, 0, Math.PI*2); ctx.fill();
+            ctx.drawImage(monsterImg, monster.x*TILE_SIZE-40, monster.y*TILE_SIZE-40, 80, 80);
             ctx.restore();
 
-            // Flashlight / Fog of War
-            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 50, canvas.width/2, canvas.height/2, 450);
+            // Darkness
+            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 50, canvas.width/2, canvas.height/2, 400);
             grad.addColorStop(0, 'transparent'); grad.addColorStop(1, 'black');
             ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Mini-map
+            const mapS = 150;
+            ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(canvas.width - mapS - 20, canvas.height - mapS - 20, mapS, mapS);
+            ctx.fillStyle = 'white'; ctx.fillRect(canvas.width - mapS - 20 + (player.x/GRID_SIZE)*mapS, canvas.height - mapS - 20 + (player.y/GRID_SIZE)*mapS, 4, 4);
+            ctx.fillStyle = 'red'; ctx.fillRect(canvas.width - mapS - 20 + (monster.x/GRID_SIZE)*mapS, canvas.height - mapS - 20 + (monster.y/GRID_SIZE)*mapS, 4, 4);
 
             update();
             requestAnimationFrame(draw);
