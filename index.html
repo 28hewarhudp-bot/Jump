@@ -1,78 +1,117 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; background:#000; overflow:hidden;">
-    <div id="m" style="position:fixed; color:white; width:100%; text-align:center; top:40%; font-family:sans-serif;">
-        <h1>ZAURA'S MAZE</h1>
-        <button onclick="start()" style="padding:20px; font-size:20px; cursor:pointer;">CLICK HERE TO START</button>
-        <p>Once started, CLICK ANYWHERE to move your character.</p>
+<head>
+    <title>Maze Runner: The Glade</title>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        canvas { border: 4px solid #444; box-shadow: 0 0 20px rgba(0,0,0,0.5); background: #000; }
+        .ui { margin-bottom: 10px; text-align: center; }
+        .controls { margin-top: 10px; font-size: 0.8em; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h1>THE GLADE RUNNER</h1>
+        <p>Find the <span style="color:#0f0">Green Exit</span>. Don't get stuck.</p>
     </div>
-    <canvas id="c"></canvas>
-    <script>
-        const canvas = document.getElementById('c');
-        const ctx = canvas.getContext('2d');
-        let active = false;
-        let px = 100, py = 100;
-        let mx = 500, my = 500;
-        let targetX = 100, targetY = 100;
-        let monsterState = 'WANDERING';
-        let monsterTimer = 0;
+    <canvas id="mazeCanvas"></canvas>
+    <div class="controls">Use <b>WASD</b> to move.</div>
 
-        const monsterImg = new Image();
-        monsterImg.src = 'https://ibb.co';
+<script>
+const canvas = document.getElementById('mazeCanvas');
+const ctx = canvas.getContext('2d');
 
-        function start() {
-            document.getElementById('m').style.display = 'none';
-            active = true;
-        }
+// 1. GRID CONFIGURATION (Increase these for a "huge" maze)
+const COLS = 51; 
+const ROWS = 41;
+const CELL_SIZE = 15;
+canvas.width = COLS * CELL_SIZE;
+canvas.height = ROWS * CELL_SIZE;
 
-        window.addEventListener('mousedown', (e) => {
-            targetX = e.clientX;
-            targetY = e.clientY;
+let maze = [];
+let player = { x: 1, y: 1 };
+const exit = { x: COLS - 2, y: ROWS - 2 };
+
+// 2. PROCEDURAL MAZE GENERATION (Recursive Backtracker)
+function initMaze() {
+    maze = Array(ROWS).fill().map(() => Array(COLS).fill(1));
+    const stack = [[1, 1]];
+    maze[1][1] = 0;
+
+    while (stack.length > 0) {
+        const [x, y] = stack[stack.length - 1];
+        const neighbors = [];
+        [[0, -2], [0, 2], [-2, 0], [2, 0]].forEach(([dx, dy]) => {
+            const nx = x + dx, ny = y + dy;
+            if (nx > 0 && nx < COLS - 1 && ny > 0 && ny < ROWS - 1 && maze[ny][nx] === 1) {
+                neighbors.push([nx, ny]);
+            }
         });
 
-        function loop() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            if(active) {
-                // Move Player toward target
-                px += (targetX - px) * 0.1;
-                py += (targetY - py) * 0.1;
-
-                // Monster AI
-                let dist = Math.hypot(mx - px, my - py);
-                let now = Date.now();
-
-                if(monsterState === 'WANDERING') {
-                    mx += (Math.random() - 0.5) * 5;
-                    my += (Math.random() - 0.5) * 5;
-                    if(dist < 200) { monsterState = 'SPOTTED'; monsterTimer = now + 5000; }
-                } else if(monsterState === 'SPOTTED') {
-                    if(now > monsterTimer) { monsterState = 'CHASING'; monsterTimer = now + 10000; }
-                } else {
-                    mx += (px - mx) * 0.02;
-                    my += (py - my) * 0.02;
-                    if(now > monsterTimer) monsterState = 'WANDERING';
-                }
-
-                if(dist < 50) { alert("CAUGHT"); location.reload(); }
-            }
-
-            ctx.fillStyle = 'black';
-            ctx.fillRect(0,0,canvas.width, canvas.height);
-
-            // Draw skinny maze lines
-            ctx.strokeStyle = '#333';
-            for(let i=0; i<canvas.width; i+=100) {
-                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
-            }
-
-            ctx.fillStyle = 'white';
-            ctx.beginPath(); ctx.arc(px, py, 15, 0, Math.PI*2); ctx.fill();
-            ctx.drawImage(monsterImg, mx-50, my-50, 100, 100);
-
-            requestAnimationFrame(loop);
+        if (neighbors.length > 0) {
+            const [nx, ny] = neighbors[Math.floor(Math.random() * neighbors.length)];
+            maze[y + (ny - y) / 2][x + (nx - x) / 2] = 0;
+            maze[ny][nx] = 0;
+            stack.push([nx, ny]);
+        } else {
+            stack.pop();
         }
-        loop();
-    </script>
+    }
+    maze[exit.y][exit.x] = 0; // Ensure exit is clear
+}
+
+// 3. RENDERING
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+            if (maze[y][x] === 1) {
+                ctx.fillStyle = "#333";
+                ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            }
+        }
+    }
+
+    // Exit
+    ctx.fillStyle = "#0f0";
+    ctx.fillRect(exit.x * CELL_SIZE, exit.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+
+    // Player
+    ctx.fillStyle = "#fff";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#fff";
+    ctx.beginPath();
+    ctx.arc(player.x * CELL_SIZE + CELL_SIZE/2, player.y * CELL_SIZE + CELL_SIZE/2, CELL_SIZE/3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
+
+// 4. MOVEMENT (WASD)
+window.addEventListener('keydown', (e) => {
+    let nx = player.x;
+    let ny = player.y;
+
+    if (e.key.toLowerCase() === 'w') ny--;
+    if (e.key.toLowerCase() === 's') ny++;
+    if (e.key.toLowerCase() === 'a') nx--;
+    if (e.key.toLowerCase() === 'd') nx++;
+
+    if (maze[ny] && maze[ny][nx] === 0) {
+        player.x = nx;
+        player.y = ny;
+    }
+
+    if (player.x === exit.x && player.y === exit.y) {
+        alert("You escaped the Maze!");
+        initMaze();
+        player = { x: 1, y: 1 };
+    }
+    draw();
+});
+
+initMaze();
+draw();
+</script>
 </body>
 </html>
