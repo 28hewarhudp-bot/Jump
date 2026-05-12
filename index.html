@@ -1,85 +1,76 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Zaura's Maze - Fixed Movement</title>
+    <title>Zaura's Skinny Maze</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
-        canvas { display: block; cursor: crosshair; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        canvas { display: block; }
+        #ui { position: fixed; top: 20px; width: 100%; text-align: center; color: red; font-size: 24px; pointer-events: none; }
         #overlay { 
-            position: fixed; top:0; left:0; width:100%; height:100%; 
-            background: rgba(0,0,0,0.9); color: white; display: flex; 
-            flex-direction: column; justify-content: center; align-items: center; z-index: 10;
+            position: fixed; inset: 0; background: #000; color: #fff; 
+            display: flex; flex-direction: column; justify-content: center; 
+            align-items: center; z-index: 10; cursor: pointer;
         }
-        #status { position: fixed; top: 20px; width: 100%; text-align: center; color: red; font-size: 30px; font-weight: bold; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="overlay" onclick="this.style.display='none'; active=true;">
-        <h1>ZAURA IS WAITING</h1>
-        <p>HOLD MOUSE BUTTON TO MOVE TOWARD CURSOR</p>
-        <p>(Or use WASD keys)</p>
-        <h2 style="color: red;">CLICK TO START</h2>
+    <div id="overlay" onclick="this.style.display='none'; run=true;">
+        <h1>MAZE RESTORED</h1>
+        <p>USE <b>WASD</b> TO MOVE</p>
+        <h2 style="color:red">CLICK TO START</h2>
     </div>
-    <div id="status"></div>
-    <canvas id="c"></canvas>
+    <div id="ui"><div id="status"></div></div>
+    <canvas id="g"></canvas>
 
     <script>
-        const canvas = document.getElementById('c');
+        const canvas = document.getElementById('g');
         const ctx = canvas.getContext('2d');
         const status = document.getElementById('status');
-        let active = false;
+        let run = false;
 
-        const GRID = 40;
-        const SIZE = 120;
-        const player = { x: 60, y: 60, speed: 5 };
-        const monster = { x: 3000, y: 3000, speed: 3.5, state: 'WANDERING', timer: 0 };
+        const GRID_SIZE = 61; // Huge maze
+        const TILE = 100; // Big corridors
+        const player = { x: 1.5, y: 1.5, speed: 0.2 };
+        const monster = { x: GRID_SIZE-1.5, y: GRID_SIZE-1.5, speed: 0.15, state: 'WANDERING', timer: 0 };
         const monsterImg = new Image();
         monsterImg.src = 'https://ibb.co';
 
-        let walls = [];
-        for(let i=0; i<80; i++) {
-            walls.push({
-                x: Math.random() * 4000,
-                y: Math.random() * 4000,
-                w: Math.random() > 0.5 ? 5 : 400,
-                h: Math.random() > 0.5 ? 400 : 5
-            });
-        }
-
-        const keys = {};
-        let mouse = { down: false, x: 0, y: 0 };
-        window.onkeydown = e => keys[e.key.toLowerCase()] = true;
-        window.onkeyup = e => keys[e.key.toLowerCase()] = false;
-        window.onmousedown = e => mouse.down = true;
-        window.onmouseup = e => mouse.down = false;
-        window.onmousemove = e => { mouse.x = e.clientX; mouse.y = e.clientY; };
-
-        function update() {
-            if(!active) return;
-
-            let oldX = player.x, oldY = player.y;
-
-            // Mouse Movement
-            if(mouse.down) {
-                let dx = mouse.x - canvas.width/2;
-                let dy = mouse.y - canvas.height/2;
-                let angle = Math.atan2(dy, dx);
-                player.x += Math.cos(angle) * player.speed;
-                player.y += Math.sin(angle) * player.speed;
-            }
-            // WASD Movement
-            if(keys.w) player.y -= player.speed;
-            if(keys.s) player.y += player.speed;
-            if(keys.a) player.x -= player.speed;
-            if(keys.d) player.x += player.speed;
-
-            // Simple Collision
-            for(let w of walls) {
-                if(player.x > w.x && player.x < w.x+w.w && player.y > w.y && player.y < w.y+w.h) {
-                    player.x = oldX; player.y = oldY;
+        // --- GENERATE MAZE ---
+        let maze = [];
+        for(let y=0; y<GRID_SIZE; y++) maze[y] = new Array(GRID_SIZE).fill(1);
+        function carve(x, y) {
+            maze[y][x] = 0;
+            const dirs = [[0,-2],[0,2],[-2,0],[2,0]].sort(() => Math.random()-0.5);
+            for(let [dx, dy] of dirs) {
+                if(x+dx > 0 && x+dx < GRID_SIZE-1 && y+dy > 0 && y+dy < GRID_SIZE-1 && maze[y+dy][x+dx] === 1) {
+                    maze[y+dy/2][x+dx/2] = 0;
+                    carve(x+dx, y+dy);
                 }
             }
+        }
+        carve(1, 1);
+
+        const keys = {};
+        window.onkeydown = e => keys[e.key.toLowerCase()] = true;
+        window.onkeyup = e => keys[e.key.toLowerCase()] = false;
+
+        function wallAt(x, y) {
+            if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return true;
+            return maze[Math.floor(y)][Math.floor(x)] === 1;
+        }
+
+        function update() {
+            if(!run) return;
+
+            let nx = player.x, ny = player.y;
+            if(keys.w) ny -= player.speed;
+            if(keys.s) ny += player.speed;
+            if(keys.a) nx -= player.speed;
+            if(keys.d) nx += player.speed;
+
+            // Smooth sliding collision
+            if(!wallAt(nx, player.y)) player.x = nx;
+            if(!wallAt(player.x, ny)) player.y = ny;
 
             // Monster AI
             let d = Math.hypot(monster.x - player.x, monster.y - player.y);
@@ -87,51 +78,53 @@
 
             if(monster.state === 'WANDERING') {
                 status.innerText = "";
-                monster.x += (Math.random()-0.5) * 10;
-                monster.y += (Math.random()-0.5) * 10;
-                if(d < 500) { monster.state = 'SPOTTED'; monster.timer = now + 5000; }
+                monster.x += (Math.random()-0.5) * 0.1;
+                monster.y += (Math.random()-0.5) * 0.1;
+                if(d < 7) { monster.state = 'SPOTTED'; monster.timer = now + 5000; }
             } else if(monster.state === 'SPOTTED') {
-                status.innerText = "LOOK BEHIND YOU";
+                status.innerText = "IT SEES YOU...";
                 if(now > monster.timer) { monster.state = 'CHASING'; monster.timer = now + 10000; }
             } else {
-                status.innerText = "RUN.";
+                status.innerText = "RUN!";
                 let a = Math.atan2(player.y - monster.y, player.x - monster.x);
                 monster.x += Math.cos(a) * monster.speed;
                 monster.y += Math.sin(a) * monster.speed;
                 if(now > monster.timer) monster.state = 'WANDERING';
             }
 
-            if(d < 40) { alert("ZAURA GOT YOU"); location.reload(); }
+            if(d < 0.5) { alert("CAUGHT"); location.reload(); }
         }
 
         function draw() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            ctx.fillStyle = '#050505';
+            ctx.fillStyle = '#000';
             ctx.fillRect(0,0,canvas.width, canvas.height);
 
             ctx.save();
-            ctx.translate(canvas.width/2 - player.x, canvas.height/2 - player.y);
+            ctx.translate(canvas.width/2 - player.x*TILE, canvas.height/2 - player.y*TILE);
 
-            // Walls
-            ctx.fillStyle = '#333';
-            for(let w of walls) ctx.fillRect(w.x, w.y, w.w, w.h);
+            // Draw Skinny Maze
+            ctx.fillStyle = '#111'; // Wall color
+            for(let y=0; y<GRID_SIZE; y++) {
+                for(let x=0; x<GRID_SIZE; x++) {
+                    if(maze[y][x] === 1) {
+                        // These are the "Skinny" walls (only 10 pixels wide)
+                        ctx.fillRect(x*TILE + 45, y*TILE, 10, TILE);
+                        ctx.fillRect(x*TILE, y*TILE + 45, TILE, 10);
+                    }
+                }
+            }
 
-            // Exit
-            ctx.fillStyle = 'lime';
-            ctx.fillRect(3800, 3800, 100, 100);
-
-            // Monster
-            ctx.drawImage(monsterImg, monster.x-60, monster.y-60, 120, 120);
-
-            // Player
+            // Player & Monster
             ctx.fillStyle = 'white';
-            ctx.beginPath(); ctx.arc(player.x, player.y, 10, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(player.x*TILE, player.y*TILE, 10, 0, Math.PI*2); ctx.fill();
+            ctx.drawImage(monsterImg, monster.x*TILE-40, monster.y*TILE-40, 80, 80);
 
             ctx.restore();
 
             // Flashlight
-            let g = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, 400);
+            let g = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 50, canvas.width/2, canvas.height/2, 400);
             g.addColorStop(0, 'transparent'); g.addColorStop(1, 'black');
             ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width, canvas.height);
 
