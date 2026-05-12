@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SCP-3008: Architect Survival</title>
+    <title>SCP-3008: Architect Survival (Lamps Restored)</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
         #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; z-index: 100; pointer-events: none; }
@@ -19,7 +19,7 @@
         <div class="bar-container">HP: <div id="health-bar" style="display:flex; gap:4px;"></div></div>
         <div class="bar-container">HG: <div id="hunger-bar" style="display:flex; gap:4px;"></div></div>
         <div id="warning">TOO TIRED TO LIFT!</div>
-        <p><b>F:</b> Pick Up | <b>Arrows:</b> Rotate | <b>Hold E on Food:</b> Eat</p>
+        <p><b>F:</b> Pick Up | <b>Arrows:</b> Rotate | <b>E:</b> Toggle Lamp | <b>Hold E on Food:</b> Eat</p>
     </div>
     <canvas id="gameCanvas"></canvas>
     <canvas id="lightCanvas"></canvas>
@@ -41,7 +41,6 @@ let camera = { x: 0, y: 0 };
 let furniture = [], employees = [], foodItems = [], chunksGenerated = new Set();
 let keys = {}, heldItem = null, eatTimer = 0;
 
-// NEW: Spaced Generation
 function generateChunk(cx, cy) {
     const chunkId = `${cx},${cy}`;
     if (chunksGenerated.has(chunkId)) return;
@@ -51,16 +50,15 @@ function generateChunk(cx, cy) {
         let f = { 
             x: cx*CHUNK_SIZE + 50 + Math.random()*(CHUNK_SIZE-100), 
             y: cy*CHUNK_SIZE + 50 + Math.random()*(CHUNK_SIZE-100), 
-            angle: Math.random() * Math.PI, type: 'furniture' 
+            angle: Math.random() * Math.PI, type: 'furniture', isLamp: false, lit: false 
         };
         
-        if (rand < 0.1) { f.w=20; f.h=20; f.color='#FFD700'; f.isLamp=true; }
-        else if (rand < 0.3) { f.w=110; f.h=60; f.color='#303f9f'; f.isBed=true; }
+        if (rand < 0.15) { f.w=20; f.h=20; f.color='#FFD700'; f.isLamp=true; }
+        else if (rand < 0.35) { f.w=110; f.h=60; f.color='#303f9f'; f.isBed=true; }
         else if (rand < 0.5) { f.w=100; f.h=40; f.color='#4e342e'; f.isCouch=true; }
         else if (rand < 0.7) { f.w=80; f.h=80; f.color='#5d4037'; f.isTable=true; }
         else { f.w=35; f.h=35; f.color='#795548'; f.isChair=true; }
 
-        // Prevent Spawn Overlap
         let overlap = furniture.some(other => Math.hypot(f.x - other.x, f.y - other.y) < 120);
         if (!overlap) {
             furniture.push(f);
@@ -71,7 +69,6 @@ function generateChunk(cx, cy) {
     chunksGenerated.add(chunkId);
 }
 
-// COLLISION WITH ROTATION & GHOSTING
 function isOverlapping(x, y, size) {
     for (let f of furniture) {
         if (f === heldItem) continue;
@@ -109,19 +106,13 @@ function update() {
     
     if (moving) player.walkCycle += 0.2;
 
-    // Ghosting Logic: Allow exit if already inside
     let currentBlocker = isOverlapping(player.x, player.y, player.size);
-    let nextBlockerX = isOverlapping(nx, player.y, player.size);
-    let nextBlockerY = isOverlapping(player.x, ny, player.size);
-
-    if (currentBlocker) { // If stuck, let player move anywhere until clear
-        player.x = nx; player.y = ny;
-    } else {
-        if (!nextBlockerX) player.x = nx;
-        if (!nextBlockerY) player.y = ny;
+    if (currentBlocker) { player.x = nx; player.y = ny; } 
+    else {
+        if (!isOverlapping(nx, player.y, player.size)) player.x = nx;
+        if (!isOverlapping(player.x, ny, player.size)) player.y = ny;
     }
 
-    // Grab Logic
     if (keys['f']) {
         if (!heldItem) {
             let target = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 80) || 
@@ -198,14 +189,19 @@ function draw() {
     });
     furniture.forEach(f => {
         ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.angle);
-        ctx.fillStyle = f.isLamp ? (f.lit ? "#FFD700" : "#555") : f.color;
-        ctx.fillRect(-f.w/2, -f.h/2, f.w, f.h);
-        if(f.isBed) { ctx.fillStyle="#eee"; ctx.fillRect(-f.w/2+5, -f.h/2+5, 30, 20); }
+        if (f.isLamp) {
+            ctx.fillStyle = "#333"; ctx.fillRect(-5, -5, 10, 40); // Stand
+            ctx.fillStyle = f.lit ? "#FFD700" : "#555"; ctx.beginPath(); ctx.arc(0, -10, 15, 0, Math.PI, true); ctx.fill(); // Shade
+        } else {
+            ctx.fillStyle = f.color; ctx.fillRect(-f.w/2, -f.h/2, f.w, f.h);
+            if(f.isBed) { ctx.fillStyle="#eee"; ctx.fillRect(-f.w/2+5, -f.h/2+5, 30, 20); }
+        }
         ctx.restore();
     });
     employees.forEach(e => drawHuman(e.x, e.y, "#ffeb3b", "#ffe0b2", e.walkCycle, false));
     drawHuman(player.x, player.y, "#2196f3", "#ffccbc", player.walkCycle, true);
     ctx.restore();
+    
     lctx.clearRect(0,0,canvas.width, canvas.height);
     if (!isDay) {
         lctx.fillStyle = "rgba(0, 0, 15, 0.98)"; lctx.fillRect(0,0,canvas.width, canvas.height);
