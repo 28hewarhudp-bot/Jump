@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SCP-3008: Stockpile Survival</title>
+    <title>SCP-3008: Architect Survival</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
         #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; z-index: 100; pointer-events: none; }
@@ -10,24 +10,17 @@
         .hunger { background: #ff9800; }
         .health { background: #f44336; border-radius: 50%; }
         .empty { background: transparent; border-color: #555; }
-        #game-over { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                    color: red; text-align: center; background: rgba(0,0,0,0.8); padding: 50px; z-index: 200; pointer-events: auto;}
+        #warning { color: #ff4444; font-weight: bold; display: none; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <div id="timer-box" style="font-size:24px;"><span id="status">DAY</span> <span id="day-count">1</span>: <span id="countdown">60</span>s</div>
+        <div id="timer-box" style="font-size:24px;"><span id="status">DAY</span>: <span id="countdown">60</span>s</div>
         <div class="bar-container">HP: <div id="health-bar" style="display:flex; gap:4px;"></div></div>
         <div class="bar-container">HG: <div id="hunger-bar" style="display:flex; gap:4px;"></div></div>
-        <p><b>F:</b> Pick Up Item | <b>Hold F + E:</b> Eat Held Food | <b>Space:</b> Sprint</p>
+        <div id="warning">TOO TIRED TO LIFT! FIND FOOD!</div>
+        <p><b>F:</b> Pick Up | <b>Hold E while carrying food:</b> Eat | <b>Arrows:</b> Rotate</p>
     </div>
-    
-    <div id="game-over">
-        <h1>THE STORE IS CLOSED</h1>
-        <p>You survived <span id="final-days">0</span> days.</p>
-        <button onclick="location.reload()">RESTART</button>
-    </div>
-
     <canvas id="gameCanvas"></canvas>
     <canvas id="lightCanvas"></canvas>
 
@@ -40,10 +33,9 @@ const lctx = lightCanvas.getContext('2d');
 function resize() { canvas.width = lightCanvas.width = window.innerWidth; canvas.height = lightCanvas.height = window.innerHeight; }
 window.onresize = resize; resize();
 
-// --- GAME STATE ---
 const CHUNK_SIZE = 800;
 const CYCLE_TIME = 60;
-let worldTime = 0, isDay = true, hunger = 10, health = 5, day = 1;
+let worldTime = 0, isDay = true, hunger = 10, health = 5;
 let player = { x: 0, y: 0, size: 15, speed: 5, walkCycle: 0, invuln: 0 };
 let camera = { x: 0, y: 0 };
 let furniture = [], employees = [], foodItems = [], chunksGenerated = new Set();
@@ -52,18 +44,16 @@ let keys = {}, heldItem = null, eatTimer = 0;
 function generateChunk(cx, cy) {
     const chunkId = `${cx},${cy}`;
     if (chunksGenerated.has(chunkId)) return;
-    for (let i = 0; i < 10; i++) {
-        let isLamp = Math.random() < 0.15, isBed = Math.random() < 0.3;
-        furniture.push({
-            x: cx * CHUNK_SIZE + Math.random() * CHUNK_SIZE,
-            y: cy * CHUNK_SIZE + Math.random() * CHUNK_SIZE,
-            w: isBed ? 120 : 80, h: isBed ? 70 : 50, color: isBed ? '#303f9f' : '#5d4037', 
-            isLamp, isBed, lit: false, type: 'furniture'
-        });
-        if (Math.random() < 0.4) foodItems.push({ 
-            x: cx*CHUNK_SIZE+Math.random()*CHUNK_SIZE, y: cy*CHUNK_SIZE+Math.random()*CHUNK_SIZE,
-            w: 16, h: 16, type: 'food' 
-        });
+    for (let i = 0; i < 12; i++) {
+        let rand = Math.random();
+        let f = { x: cx*CHUNK_SIZE+Math.random()*CHUNK_SIZE, y: cy*CHUNK_SIZE+Math.random()*CHUNK_SIZE, angle: 0, type: 'furniture' };
+        if (rand < 0.1) { f.w=20; f.h=20; f.color='#FFD700'; f.isLamp=true; }
+        else if (rand < 0.3) { f.w=110; f.h=60; f.color='#303f9f'; f.isBed=true; }
+        else if (rand < 0.5) { f.w=100; f.h=40; f.color='#4e342e'; f.isCouch=true; }
+        else if (rand < 0.7) { f.w=80; f.h=80; f.color='#5d4037'; f.isTable=true; }
+        else { f.w=35; f.h=35; f.color='#795548'; f.isChair=true; }
+        furniture.push(f);
+        if (Math.random() < 0.4) foodItems.push({ x: cx*CHUNK_SIZE+Math.random()*CHUNK_SIZE, y: cy*CHUNK_SIZE+Math.random()*CHUNK_SIZE, w:16, h:16, type:'food' });
     }
     for (let i = 0; i < 2; i++) employees.push({ x: cx*CHUNK_SIZE+400, y: cy*CHUNK_SIZE+400, vx: 1, vy: 0, walkCycle: 0 });
     chunksGenerated.add(chunkId);
@@ -72,107 +62,93 @@ function generateChunk(cx, cy) {
 function isOverlapping(x, y, size) {
     for (let f of furniture) {
         if (f === heldItem) continue;
-        if (x + size > f.x - f.w/2 && x - size < f.x + f.w/2 && y + size > f.y - f.h/2 && y - size < f.y + f.h/2) return true;
+        let dx = x - f.x, dy = y - f.y;
+        let cos = Math.cos(-f.angle), sin = Math.sin(-f.angle);
+        let rx = Math.abs(dx * cos - dy * sin), ry = Math.abs(dx * sin + dy * cos);
+        if (rx < f.w/2 + size && ry < f.h/2 + size) return true;
     }
     return false;
 }
 
 function updateBars() {
-    const hBar = document.getElementById('health-bar');
-    const hgBar = document.getElementById('hunger-bar');
-    hBar.innerHTML = ''; hgBar.innerHTML = '';
+    const hBar = document.getElementById('health-bar'), hgBar = document.getElementById('hunger-bar');
+    hBar.innerHTML = hgBar.innerHTML = '';
     for(let i=0; i<5; i++) hBar.innerHTML += `<div class="slot health ${i >= health ? 'empty' : ''}"></div>`;
     for(let i=0; i<10; i++) hgBar.innerHTML += `<div class="slot hunger ${i >= hunger ? 'empty' : ''}"></div>`;
+    document.getElementById('warning').style.display = hunger <= 0 ? 'block' : 'none';
 }
 
-window.addEventListener('keydown', e => {
-    keys[e.key.toLowerCase()] = true;
-    if (e.key.toLowerCase() === 'e' && !heldItem) {
-        let lamp = furniture.find(f => f.isLamp && Math.hypot(player.x - f.x, player.y - f.y) < 60);
-        if (lamp) lamp.lit = !lamp.lit;
-    }
-});
-window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-function gameOver() {
-    document.getElementById('game-over').style.display = 'block';
-    document.getElementById('final-days').innerText = day;
-}
+window.addEventListener('keydown', e => { keys[e.key] = true; keys[e.code] = true; });
+window.addEventListener('keyup', e => { keys[e.key] = false; keys[e.code] = false; });
 
 function update() {
     worldTime += 1/60;
-    let oldIsDay = isDay;
     isDay = (Math.floor(worldTime / CYCLE_TIME) % 2 === 0);
-    if (!oldIsDay && isDay) day++;
-    
     document.getElementById('status').innerText = isDay ? "DAY" : "NIGHT";
-    document.getElementById('day-count').innerText = day;
     document.getElementById('countdown').innerText = Math.floor(CYCLE_TIME - (worldTime % CYCLE_TIME));
 
     if (player.invuln > 0) player.invuln--;
 
     let nx = player.x, ny = player.y, moving = false;
-    let speed = keys[' '] ? player.speed * 1.6 : player.speed;
-    if (keys['w']) { ny -= speed; moving = true; }
-    if (keys['s']) { ny += speed; moving = true; }
-    if (keys['a']) { nx -= speed; moving = true; }
-    if (keys['d']) { nx += speed; moving = true; }
+    let speed = keys[' '] ? 7 : 4.5;
+    if (keys['w']) { ny -= speed; moving = true; } if (keys['s']) { ny += speed; moving = true; }
+    if (keys['a']) { nx -= speed; moving = true; } if (keys['d']) { nx += speed; moving = true; }
     
-    if (moving) player.walkCycle += 0.22;
-    if (isOverlapping(player.x, player.y, player.size)) { player.x = nx; player.y = ny; } 
-    else {
-        if (!isOverlapping(nx, player.y, player.size)) player.x = nx;
-        if (!isOverlapping(player.x, ny, player.size)) player.y = ny;
-    }
+    if (moving) player.walkCycle += 0.2;
+    if (!isOverlapping(nx, player.y, player.size)) player.x = nx;
+    if (!isOverlapping(player.x, ny, player.size)) player.y = ny;
 
-    // Grab Item Logic
     if (keys['f']) {
         if (!heldItem) {
-            heldItem = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 70) || 
-                       foodItems.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 70);
-            if (heldItem && heldItem.type === 'furniture') { hunger--; updateBars(); if(hunger <= 0) gameOver(); }
+            let target = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 70) || 
+                         foodItems.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 70);
+            
+            // Only lift if not hunger-depleted OR if picking up food
+            if (target && (hunger > 0 || target.type === 'food')) {
+                heldItem = target;
+                if (heldItem.type === 'furniture') { hunger--; updateBars(); }
+            }
         }
-        if (heldItem) { 
-            heldItem.x = player.x; heldItem.y = player.y; 
-            // Eating Logic: Hold F and E
-            if (heldItem.type === 'food' && keys['e']) {
+        if (heldItem) {
+            heldItem.x = player.x; heldItem.y = player.y;
+            if (keys['ArrowLeft']) heldItem.angle -= 0.05; 
+            if (keys['ArrowRight']) heldItem.angle += 0.05;
+
+            // Proper Eating: Hold E while holding food
+            if (heldItem.type === 'food' && (keys['e'] || keys['KeyE'])) {
                 eatTimer++;
-                if (eatTimer > 40) {
-                    hunger = Math.min(10, hunger + 3);
+                if (eatTimer > 50) {
+                    hunger = Math.min(10, hunger + 4);
                     foodItems = foodItems.filter(f => f !== heldItem);
-                    heldItem = null;
-                    eatTimer = 0;
-                    updateBars();
+                    heldItem = null; eatTimer = 0; updateBars();
                 }
             } else { eatTimer = 0; }
         }
-    } else { heldItem = null; eatTimer = 0; }
+    } else {
+        // Toggle lamp with E if not holding anything
+        if (keys['e'] || keys['KeyE']) {
+             let lamp = furniture.find(f => f.isLamp && Math.hypot(player.x - f.x, player.y - f.y) < 60);
+             if (lamp) lamp.lit = !lamp.lit;
+             keys['e'] = false; keys['KeyE'] = false; // Prevent rapid flickering
+        }
+        heldItem = null; eatTimer = 0; 
+    }
 
     camera.x = player.x - canvas.width/2; camera.y = player.y - canvas.height/2;
     let cX = Math.floor(player.x/CHUNK_SIZE), cY = Math.floor(player.y/CHUNK_SIZE);
     for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) generateChunk(cX+x, cY+y);
 
     employees.forEach(emp => {
-        let dx = player.x - emp.x, dy = player.y - emp.y, d = Math.hypot(dx, dy);
-        emp.walkCycle += 0.15;
+        let dx = player.x-emp.x, dy = player.y-emp.y, d = Math.hypot(dx, dy);
         if (!isDay) {
-            let mvX = (dx/d)*3.3, mvY = (dy/d)*3.3;
-            if (!isOverlapping(emp.x+mvX, emp.y, 10)) emp.x += mvX;
-            if (!isOverlapping(emp.x, emp.y+mvY, 10)) emp.y += mvY;
-            if (d < 25 && player.invuln <= 0) {
-                health--; player.invuln = 60; updateBars();
-                player.x += (dx/d) * -60; player.y += (dy/d) * -60;
-                if (health <= 0) gameOver();
-            }
+            emp.x += (dx/d)*3.3; emp.y += (dy/d)*3.3;
+            if (d < 25 && player.invuln <= 0) { health--; player.invuln = 60; updateBars(); if (health <= 0) location.reload(); }
         } else {
-            if (!isOverlapping(emp.x+emp.vx, emp.y, 10)) emp.x += emp.vx;
-            if (!isOverlapping(emp.x, emp.y+emp.vy, 10)) emp.y += emp.vy;
+            emp.x += emp.vx; emp.y += emp.vy;
             if (Math.random() < 0.01) { emp.vx = Math.random()*2-1; emp.vy = Math.random()*2-1; }
         }
     });
-
-    draw();
-    requestAnimationFrame(update);
+    draw(); requestAnimationFrame(update);
 }
 
 function drawHuman(x, y, color, headColor, cycle, isPlayer) {
@@ -180,40 +156,31 @@ function drawHuman(x, y, color, headColor, cycle, isPlayer) {
     if (isPlayer && player.invuln % 10 > 5) ctx.globalAlpha = 0.3;
     ctx.fillStyle = headColor; ctx.fillRect(x - 6, y - 35, 12, 12); 
     ctx.fillStyle = color; ctx.fillRect(x - 10, y - 23, 20, 18); 
-    ctx.fillRect(x - 14, y - 23 + limbS, 6, 12); ctx.fillRect(x + 8, y - 23 - limbS, 6, 12); 
-    ctx.fillStyle = "#333"; ctx.fillRect(x - 8, y - 5 + limbS, 7, 10); ctx.fillRect(x + 1, y - 5 - limbS, 7, 10);
+    ctx.fillRect(x-14, y-23+limbS, 6, 12); ctx.fillRect(x+8, y-23-limbS, 6, 12); 
+    ctx.fillStyle = "#333"; ctx.fillRect(x-8, y-5+limbS, 7, 10); ctx.fillRect(x+1, y-5-limbS, 7, 10);
     ctx.globalAlpha = 1.0;
 }
 
 function draw() {
     ctx.fillStyle = "#9e9e9e"; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save(); ctx.translate(-camera.x, -camera.y);
-    
     foodItems.forEach(f => {
         ctx.fillStyle = "brown"; ctx.beginPath(); ctx.arc(f.x, f.y, 8, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(f.x-2, f.y-2, 3, 0, Math.PI*2); ctx.fill();
-        if (heldItem === f && eatTimer > 0) { // Eating visual bar
-            ctx.fillStyle = "white"; ctx.fillRect(f.x-10, f.y-20, 20, 5);
-            ctx.fillStyle = "green"; ctx.fillRect(f.x-10, f.y-20, eatTimer/2, 5);
+        if (heldItem === f && eatTimer > 0) {
+            ctx.fillStyle = "white"; ctx.fillRect(f.x-15, f.y-25, 30, 5);
+            ctx.fillStyle = "#4caf50"; ctx.fillRect(f.x-15, f.y-25, (eatTimer/50)*30, 5);
         }
     });
-
     furniture.forEach(f => {
-        if (f.isLamp) {
-            ctx.fillStyle = "#333"; ctx.fillRect(f.x-5, f.y-5, 10, 40);
-            ctx.fillStyle = f.lit ? "#FFF700" : "#555"; ctx.beginPath(); ctx.arc(f.x, f.y-10, 15, 0, Math.PI, true); ctx.fill();
-        } else {
-            ctx.fillStyle = "rgba(0,0,0,0.1)"; ctx.fillRect(f.x-f.w/2+5, f.y-f.h/2+5, f.w, f.h);
-            ctx.fillStyle = f.color; ctx.fillRect(f.x-f.w/2, f.y-f.h/2, f.w, f.h);
-            if(f.isBed) { ctx.fillStyle="#eee"; ctx.fillRect(f.x-f.w/2+5, f.y-f.h/2+5, 30, 20); }
-            ctx.fillStyle = "#3e2723"; [[-1,-1],[1,-1],[-1,1],].forEach(p => ctx.fillRect(f.x+(p*f.w/2)-(p<0?0:8), f.y+(p*f.h/2)-(p<0?0:8), 8, 8));
-        }
+        ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.angle);
+        ctx.fillStyle = f.isLamp ? (f.lit ? "#FFD700" : "#555") : f.color;
+        ctx.fillRect(-f.w/2, -f.h/2, f.w, f.h);
+        if(f.isBed) { ctx.fillStyle="#eee"; ctx.fillRect(-f.w/2+5, -f.h/2+5, 30, 20); }
+        ctx.restore();
     });
-
     employees.forEach(e => drawHuman(e.x, e.y, "#ffeb3b", "#ffe0b2", e.walkCycle, false));
     drawHuman(player.x, player.y, "#2196f3", "#ffccbc", player.walkCycle, true);
     ctx.restore();
-
     lctx.clearRect(0,0,canvas.width, canvas.height);
     if (!isDay) {
         lctx.fillStyle = "rgba(0, 0, 15, 0.98)"; lctx.fillRect(0,0,canvas.width, canvas.height);
