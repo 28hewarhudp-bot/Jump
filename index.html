@@ -1,57 +1,110 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>The Backrooms: Infinite Maze</title>
+    <title>Backrooms - Fixed Controls</title>
     <style>
-        body { background: #1a1a14; color: #d4d4aa; font-family: 'Courier New', Courier, monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
-        canvas { background: #e2d192; cursor: none; }
-        .vignette { position: fixed; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 150px rgba(0,0,0,0.8); pointer-events: none; }
-        .ui { position: absolute; top: 20px; left: 20px; text-shadow: 2px 2px 2px black; }
-        .hum { display: none; } /* Add a low hum sound if you have one */
+        body { margin: 0; background: #1a1a14; overflow: hidden; font-family: 'Courier New', monospace; }
+        canvas { background: #e2d192; display: block; }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); color: #d4d4aa;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10; cursor: pointer;
+        }
+        .ui { position: absolute; top: 10px; left: 10px; color: #444; pointer-events: none; z-index: 5; }
     </style>
 </head>
 <body>
-    <div class="ui">
-        LEVEL 0: "THE LOBBY"<br>
-        COORD: <span id="coords">0, 0</span><br>
-        <small>Run. Don't look back.</small>
+
+    <div id="overlay" onclick="startGame()">
+        <h1>THE BACKROOMS</h1>
+        <p>CLICK ANYWHERE TO START</p>
+        <p style="font-size: 0.8em;">Use WASD to move</p>
     </div>
-    <div class="vignette"></div>
+
+    <div class="ui">COORD: <span id="coords">0, 0</span></div>
     <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const coordDisplay = document.getElementById('coords');
+const overlay = document.getElementById('overlay');
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-
-const TILE_SIZE = 60;
-const WALL_COLOR = "#bcae76"; // Yellowish Backrooms wall
-const FLOOR_COLOR = "#e2d192"; // Dirty carpet color
-const PLAYER_COLOR = "#222";
-
-let player = { x: 0, y: 0 };
+let gameRunning = false;
+let player = { x: 30, y: 30 };
 let keys = {};
+const TILE_SIZE = 80;
 
-// Use a seedable-style hash to make the world consistent as you move back and forth
+// 1. Force Focus Function
+function startGame() {
+    overlay.style.display = 'none';
+    gameRunning = true;
+    window.focus(); // Force browser focus to the game window
+}
+
+// 2. Wall Generation Logic
 function isWall(x, y) {
-    // This creates a "noise" pattern that looks like a maze
-    // Using prime numbers to create a pseudo-random grid
-    if (x === 0 && y === 0) return false; // Starting point is always clear
+    if (Math.abs(x) <= 1 && Math.abs(y) <= 1) return false; // Safe start zone
     let val = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-    return (val - Math.floor(val)) > 0.75; // 25% chance of a wall
+    return (val - Math.floor(val)) > 0.82; // Walls are 18% of the world
+}
+
+// 3. Robust Input Listener
+window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+});
+window.addEventListener('keyup', (e) => {
+    keys[e.key.toLowerCase()] = false;
+});
+
+function update() {
+    if (!gameRunning) return;
+
+    let speed = 5;
+    let dx = 0;
+    let dy = 0;
+
+    if (keys['w']) dy -= speed;
+    if (keys['s']) dy += speed;
+    if (keys['a']) dx -= speed;
+    if (keys['d']) dx += speed;
+
+    // Check Horizontal Movement
+    if (!checkCollision(player.x + dx, player.y)) {
+        player.x += dx;
+    }
+    // Check Vertical Movement
+    if (!checkCollision(player.x, player.y + dy)) {
+        player.y += dy;
+    }
+}
+
+function checkCollision(nx, ny) {
+    const p = 10; // Player hitbox size
+    const corners = [
+        {x: nx - p, y: ny - p},
+        {x: nx + p, y: ny - p},
+        {x: nx - p, y: ny + p},
+        {x: nx + p, y: ny + p}
+    ];
+    for (let c of corners) {
+        if (isWall(Math.floor(c.x / TILE_SIZE), Math.floor(c.y / TILE_SIZE))) return true;
+    }
+    return false;
 }
 
 function draw() {
-    ctx.fillStyle = FLOOR_COLOR;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Clear background
+    ctx.fillStyle = "#e2d192";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const offsetX = canvas.width / 2 - player.x;
     const offsetY = canvas.height / 2 - player.y;
 
-    // Only draw what's visible on screen
+    // Render Walls
     const startCol = Math.floor((player.x - canvas.width / 2) / TILE_SIZE);
     const endCol = Math.ceil((player.x + canvas.width / 2) / TILE_SIZE);
     const startRow = Math.floor((player.y - canvas.height / 2) / TILE_SIZE);
@@ -60,70 +113,25 @@ function draw() {
     for (let row = startRow; row <= endRow; row++) {
         for (let col = startCol; col <= endCol; col++) {
             if (isWall(col, row)) {
-                ctx.fillStyle = WALL_COLOR;
+                ctx.fillStyle = "#bcae76";
                 ctx.fillRect(col * TILE_SIZE + offsetX, row * TILE_SIZE + offsetY, TILE_SIZE, TILE_SIZE);
-                
-                // Add a small "border" to walls for depth
-                ctx.strokeStyle = "rgba(0,0,0,0.1)";
+                ctx.strokeStyle = "rgba(0,0,0,0.05)";
                 ctx.strokeRect(col * TILE_SIZE + offsetX, row * TILE_SIZE + offsetY, TILE_SIZE, TILE_SIZE);
             }
         }
     }
 
-    // Draw Player (Shadowy figure)
-    ctx.fillStyle = PLAYER_COLOR;
+    // Draw Player
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.beginPath();
-    ctx.arc(canvas.width / 2, canvas.height / 2, 10, 0, Math.PI * 2);
+    ctx.arc(canvas.width / 2, canvas.height / 2, 12, 0, Math.PI * 2);
     ctx.fill();
 
-    // Update UI
-    coordDisplay.innerText = `${Math.floor(player.x / TILE_SIZE)}, ${Math.floor(player.y / TILE_SIZE)}`;
+    document.getElementById('coords').innerText = `${Math.floor(player.x / TILE_SIZE)}, ${Math.floor(player.y / TILE_SIZE)}`;
 
     update();
     requestAnimationFrame(draw);
 }
-
-function update() {
-    let speed = 4;
-    let nextX = player.x;
-    let nextY = player.y;
-
-    if (keys['w'] || keys['W']) nextY -= speed;
-    if (keys['s'] || keys['S']) nextY += speed;
-    if (keys['a'] || keys['A']) nextX -= speed;
-    if (keys['d'] || keys['D']) nextX += speed;
-
-    // Collision detection: Check the 4 corners of the player
-    if (!checkCollision(nextX, nextY)) {
-        player.x = nextX;
-        player.y = nextY;
-    }
-}
-
-function checkCollision(nx, ny) {
-    const pSize = 8; // Player hit-box size
-    const corners = [
-        {x: nx - pSize, y: ny - pSize},
-        {x: nx + pSize, y: ny - pSize},
-        {x: nx - pSize, y: ny + pSize},
-        {x: nx + pSize, y: ny + pSize}
-    ];
-
-    for (let c of corners) {
-        let col = Math.floor(c.x / TILE_SIZE);
-        let row = Math.floor(c.y / TILE_SIZE);
-        if (isWall(col, row)) return true;
-    }
-    return false;
-}
-
-window.addEventListener('keydown', e => keys[e.key] = true);
-window.addEventListener('keyup', e => keys[e.key] = false);
-
-window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-});
 
 draw();
 </script>
