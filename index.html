@@ -1,35 +1,41 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Infinite IKEA - Survival</title>
+    <title>Infinite IKEA - The Lamp Update</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: 'Courier New', Courier, monospace; }
-        #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; pointer-events: none; }
-        canvas { display: block; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        #ui { position: absolute; top: 15px; left: 15px; color: white; text-shadow: 2px 2px #000; z-index: 100; }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <h1 id="status" style="color: #ffff00;">DAY: 2:00</h1>
-        <p>WASD to Move | Hold F to Grab | Snap to Grid Active</p>
+        <h1 id="status">DAY</h1>
+        <p>F: Drag | E: Toggle Lamp | WASD: Move</p>
     </div>
     <canvas id="gameCanvas"></canvas>
+    <canvas id="lightCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+const lightCanvas = document.getElementById('lightCanvas');
+const lctx = lightCanvas.getContext('2d');
 
-// --- GAME SETTINGS ---
-const GRID_SIZE = 40;
-const CHUNK_SIZE = 800; // Large area of furniture
-const DAY_TIME = 120;   // 2 Minutes
+function resize() {
+    canvas.width = lightCanvas.width = window.innerWidth;
+    canvas.height = lightCanvas.height = window.innerHeight;
+}
+window.onresize = resize;
+resize();
+
+// --- SETTINGS ---
+const CHUNK_SIZE = 800;
+const CYCLE_TIME = 60;
 let worldTime = 0;
 let isDay = true;
 
-// --- GAME OBJECTS ---
-let player = { x: 0, y: 0, size: 20, speed: 5 };
+let player = { x: 0, y: 0, size: 15, speed: 5 };
 let camera = { x: 0, y: 0 };
 let furniture = [];
 let employees = [];
@@ -42,137 +48,123 @@ function generateChunk(cx, cy) {
     const chunkId = `${cx},${cy}`;
     if (chunksGenerated.has(chunkId)) return;
     
-    // Spawn 15-25 pieces of random furniture per chunk
-    for (let i = 0; i < 20; i++) {
-        let types = [
-            {w: 80, h: 40, c: '#5d4037', n: 'Table'},
-            {w: 30, h: 30, c: '#795548', n: 'Chair'},
-            {w: 120, h: 60, c: '#3e2723', n: 'Shelf'},
-            {w: 20, h: 20, c: '#ffeb3b', n: 'Lamp'}
-        ];
-        let t = types[Math.floor(Math.random() * types.length)];
+    for (let i = 0; i < 12; i++) {
+        let isLamp = Math.random() < 0.2;
+        let type = isLamp ? {w:20, h:20, c:'#FFD700', isLamp: true, lit: false} : {w: 100, h: 60, c: '#5d4037', isLamp: false};
         furniture.push({
             x: cx * CHUNK_SIZE + Math.random() * CHUNK_SIZE,
             y: cy * CHUNK_SIZE + Math.random() * CHUNK_SIZE,
-            w: t.w, h: t.h, color: t.c, name: t.n
+            w: type.w, h: type.h, color: type.c, isLamp: type.isLamp, lit: type.lit
         });
+    }
+
+    for (let i = 0; i < 2; i++) {
+        employees.push({ x: cx * CHUNK_SIZE + 400, y: cy * CHUNK_SIZE + 400, vx: 1, vy: 0, speed: 1.5 });
     }
     chunksGenerated.add(chunkId);
 }
 
-// --- INPUTS ---
-window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+function checkCollision(x, y, size, ignore = null) {
+    for (let f of furniture) {
+        if (f === ignore) continue;
+        if (x + size > f.x - f.w/2 && x - size < f.x + f.w/2 && y + size > f.y - f.h/2 && y - size < f.y + f.h/2) return true;
+    }
+    return false;
+}
+
+window.addEventListener('keydown', e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === 'e') {
+        let target = heldItem || furniture.find(f => f.isLamp && Math.hypot(player.x - f.x, player.y - f.y) < 60);
+        if (target && target.isLamp) target.lit = !target.lit;
+    }
+});
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
 function update() {
-    // 1. Time & Day/Night Logic
     worldTime += 1/60;
-    let timeLeft = Math.max(0, 120 - (Math.floor(worldTime) % 120));
-    isDay = (Math.floor(worldTime / 120) % 2 === 0);
-    
-    document.getElementById('status').innerText = `${isDay ? "DAY" : "NIGHT"}: ${Math.floor(timeLeft/60)}:${(timeLeft%60).toString().padStart(2, '0')}`;
-    document.getElementById('status').style.color = isDay ? "#ffff00" : "#ff4444";
+    isDay = (Math.floor(worldTime / CYCLE_TIME) % 2 === 0);
+    document.getElementById('status').innerText = isDay ? "DAY" : "NIGHT - GET A LAMP";
+    document.getElementById('status').style.color = isDay ? "yellow" : "red";
 
-    // 2. Player Movement
-    if (keys['w']) player.y -= player.speed;
-    if (keys['s']) player.y += player.speed;
-    if (keys['a']) player.x -= player.speed;
-    if (keys['d']) player.x += player.speed;
+    let nx = player.x, ny = player.y;
+    if (keys['w']) ny -= player.speed; if (keys['s']) ny += player.speed;
+    if (keys['a']) nx -= player.speed; if (keys['d']) nx += player.speed;
+    if (!checkCollision(nx, player.y, player.size)) player.x = nx;
+    if (!checkCollision(player.x, ny, player.size)) player.y = ny;
 
-    // Camera follow
-    camera.x = player.x - canvas.width / 2;
-    camera.y = player.y - canvas.height / 2;
+    camera.x = player.x - canvas.width/2; camera.y = player.y - canvas.height/2;
 
-    // 3. Infinite World Loading
-    let currentChunkX = Math.floor(player.x / CHUNK_SIZE);
-    let currentChunkY = Math.floor(player.y / CHUNK_SIZE);
-    for(let x = -1; x <= 1; x++) {
-        for(let y = -1; y <= 1; y++) {
-            generateChunk(currentChunkX + x, currentChunkY + y);
-        }
-    }
+    let cX = Math.floor(player.x/CHUNK_SIZE), cY = Math.floor(player.y/CHUNK_SIZE);
+    for(let x=-1; x<=1; x++) for(let y=-1; y<=1; y++) generateChunk(cX+x, cY+y);
 
-    // 4. Picking up Furniture (F)
     if (keys['f']) {
-        if (!heldItem) {
-            heldItem = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 80);
-        }
-        if (heldItem) {
-            // Drag and Snap to Grid
-            heldItem.x = Math.round(player.x / 10) * 10;
-            heldItem.y = Math.round(player.y / 10) * 10;
-        }
-    } else {
-        heldItem = null;
-    }
+        if (!heldItem) heldItem = furniture.find(f => Math.hypot(player.x - f.x, player.y - f.y) < 60);
+        if (heldItem) { heldItem.x = player.x; heldItem.y = player.y; }
+    } else heldItem = null;
 
-    // 5. Employee AI (Spawn at night, chase player)
-    if (!isDay) {
-        if (employees.length < 3) {
-            employees.push({ x: player.x + 400, y: player.y + 400, speed: 3.5 });
+    employees.forEach(emp => {
+        let dx = player.x - emp.x, dy = player.y - emp.y, d = Math.hypot(dx, dy);
+        if (!isDay) {
+            emp.x += (dx/d)*3; emp.y += (dy/d)*3;
+            if (d < 20) location.reload();
+        } else {
+            emp.x += emp.vx; emp.y += emp.vy;
+            if (Math.random() < 0.01) { emp.vx = Math.random()*2-1; emp.vy = Math.random()*2-1; }
         }
-        employees.forEach(emp => {
-            let dx = player.x - emp.x;
-            let dy = player.y - emp.y;
-            let dist = Math.hypot(dx, dy);
-            emp.x += (dx / dist) * emp.speed;
-            emp.y += (dy / dist) * emp.speed;
-            if (dist < 20) location.reload(); // Caught!
-        });
-    } else {
-        employees = []; // Reset employees in day
-    }
+    });
 
     draw();
     requestAnimationFrame(update);
 }
 
 function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 1. Draw World
+    ctx.fillStyle = "#9e9e9e";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(-camera.x, -camera.y);
 
-    // Floor Grid
-    ctx.strokeStyle = isDay ? "#ccc" : "#111";
-    ctx.lineWidth = 1;
-    let startX = Math.floor(camera.x / GRID_SIZE) * GRID_SIZE;
-    let startY = Math.floor(camera.y / GRID_SIZE) * GRID_SIZE;
-    for(let x = startX; x < startX + canvas.width + GRID_SIZE; x += GRID_SIZE) {
-        ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + canvas.height); ctx.stroke();
-    }
-    for(let y = startY; y < startY + canvas.height + GRID_SIZE; y += GRID_SIZE) {
-        ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + canvas.width, y); ctx.stroke();
-    }
-
-    // Furniture
     furniture.forEach(f => {
-        ctx.fillStyle = f.color;
-        ctx.fillRect(f.x - f.w/2, f.y - f.h/2, f.w, f.h);
-        ctx.strokeStyle = "black";
-        ctx.strokeRect(f.x - f.w/2, f.y - f.h/2, f.w, f.h);
+        if (f.isLamp) {
+            ctx.fillStyle = "#333"; ctx.fillRect(f.x-5, f.y-5, 10, 40); // Stand
+            ctx.fillStyle = f.lit ? "#FFF700" : "#999"; 
+            ctx.beginPath(); ctx.arc(f.x, f.y-10, 15, 0, Math.PI, true); ctx.fill(); // Shade
+        } else {
+            ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.fillRect(f.x - f.w/2 + 5, f.y - f.h/2 + 5, f.w, f.h); // Shadow
+            ctx.fillStyle = f.color; ctx.fillRect(f.x - f.w/2, f.y - f.h/2, f.w, f.h); // Surface
+            ctx.fillStyle = "#3e2723"; // Legs
+            ctx.fillRect(f.x-f.w/2, f.y-f.h/2, 10, 10); ctx.fillRect(f.x+f.w/2-10, f.y-f.h/2, 10, 10);
+        }
     });
 
-    // Employee
     employees.forEach(emp => {
-        ctx.fillStyle = "#ffeb3b"; // Yellow shirt
-        ctx.fillRect(emp.x - 15, emp.y - 15, 30, 30);
-        ctx.fillStyle = "#eee"; // Pale skin
-        ctx.fillRect(emp.x - 10, emp.y - 40, 20, 25);
+        ctx.fillStyle = "#ffeb3b"; ctx.fillRect(emp.x-12, emp.y-12, 24, 24);
+        ctx.fillStyle = "#ffe0b2"; ctx.fillRect(emp.x-8, emp.y-30, 16, 18);
     });
 
-    // Player
-    ctx.fillStyle = "#2196f3";
-    ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, Math.PI*2); ctx.fill();
-
+    ctx.fillStyle = "#2196f3"; ctx.beginPath(); ctx.arc(player.x, player.y, player.size, 0, Math.PI*2); ctx.fill();
     ctx.restore();
 
-    // Darkness overlay at night
+    // 2. Draw Lighting Layer
+    lctx.clearRect(0,0,canvas.width, canvas.height);
     if (!isDay) {
-        ctx.fillStyle = "rgba(0, 0, 40, 0.6)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        lctx.fillStyle = "rgba(0, 0, 15, 0.96)"; // Pitch Black
+        lctx.fillRect(0,0,canvas.width, canvas.height);
+        lctx.globalCompositeOperation = 'destination-out';
+
+        furniture.forEach(f => {
+            if (f.isLamp && f.lit) {
+                let grad = lctx.createRadialGradient(f.x-camera.x, f.y-camera.y, 10, f.x-camera.x, f.y-camera.y, 250);
+                grad.addColorStop(0, "rgba(255,255,255,1)");
+                grad.addColorStop(1, "rgba(255,255,255,0)");
+                lctx.fillStyle = grad;
+                lctx.beginPath(); lctx.arc(f.x-camera.x, f.y-camera.y, 250, 0, Math.PI*2); lctx.fill();
+            }
+        });
+        lctx.globalCompositeOperation = 'source-over';
     }
 }
-
 update();
 </script>
 </body>
